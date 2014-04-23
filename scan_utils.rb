@@ -100,6 +100,11 @@ class Generic
 
   end
 
+  def close()
+    @db.close
+    @f.close
+  end
+
 end
 
 class Nmap < Generic
@@ -157,9 +162,7 @@ class Nmap < Generic
     end
 
     @db.execute("END TRANSACTION")
-    @db.close
 
-    @f.close
   end
 end
 
@@ -199,9 +202,8 @@ class Nikto < Generic
     end
 
     @db.execute("END TRANSACTION")
-    @db.close
-    @f.close
   end
+
 end
 
 end
@@ -245,5 +247,7 @@ if $0 == __FILE__
     puts "Processing #{xmlfile}"
     parser.xml2sql(xmlfile)
   end
+
+  parser.close
 
 end
