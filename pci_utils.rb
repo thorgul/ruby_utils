@@ -18,7 +18,7 @@ module PCI
   def get_credit_card_provider(card_number)
     PCI::CARD_PROVIDER_CODES.each_key do |k|
       PCI::CARD_PROVIDER_CODES[k].each do |code|
-        return k if card_number.start_with? code
+        return k if card_number.to_s.start_with? code
       end
     end
     nil
@@ -26,7 +26,7 @@ module PCI
 
   def get_credit_card_data(str)
     data = nil
-    res = str.match(/B([3-6][0-9]{14,15})\^.+\^([0-9]{4})([0-9]{3})/) do |m|
+    res = str.to_s.match(/B([3-6][0-9]{14,15})\^.+\^([0-9]{4})([0-9]{3})/) do |m|
       data = {
         :number   => m[1],
         :expiry   => m[2].scan(/../).reverse.join('/'),
@@ -38,7 +38,7 @@ module PCI
   end
 
   def credit_card_valid? (account_number)
-    digits = account_number.scan(/./).map(&:to_i)
+    digits = account_number.to_s.scan(/./).map(&:to_i)
     check = digits.pop
     check = 10 if check == 0
 

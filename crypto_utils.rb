@@ -16,7 +16,7 @@ class String
     result = ""
     # puts "length => %d" % length
     for i in 0..length-1
-      result << (self[i].ord ^ key[i % key.length].ord).chr
+      result << (self[i].unpack("C")[0] ^ key[i % key.length].unpack("C")[0]).chr
     end
     result
   end
