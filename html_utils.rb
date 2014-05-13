@@ -52,6 +52,7 @@ function hideshow(id){
 
       db = SQLite3::Database.new( file )
       ips = db.execute( "select distinct ip from hosts" )
+      ips.sort_by! {|ip| ip.to_s.split('.').map{ |octet| octet.to_i} }
       ips.each do |ip|
 
 #        report.write("<div id=\"boxtitle\"><a href=\"javascript:hideshow('services_#{ip[0]}');\" id=\"title_#{ip[0]}\">+</a>#{ip[0]}</div>")
