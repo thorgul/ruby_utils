@@ -141,12 +141,18 @@ class VNC
 
   def self.encrypt data
     des = new :encrypt
-    des.update(data) << des.final
+    res = des.update(data) << des.final
+    res.to_hex
   end
 
   def self.decrypt data
     des = new :decrypt
-    des.update(data) << des.final
+    res = nil
+    if data.length == 16
+      des.update(data.unhex) << des.final
+    else
+      des.update(data) << des.final
+    end
   end
 
   class << self #:nodoc: all

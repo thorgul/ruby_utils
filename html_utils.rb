@@ -69,7 +69,7 @@ function hideshow(id){
                 </tr>
         </table>\n")
 
-        services = db.execute( "select id,port,service from hosts where ip = ?", ip[0] )
+        services = db.execute( "select id,port,service from hosts where ip = ? order by port", ip[0] )
         services.each do |service|
           report.write("<div onclick=\"javascript:hideshow('service_#{ip[0]}_#{service[1]}');\">
         <table width=\"100%\">
