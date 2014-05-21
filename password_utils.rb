@@ -56,7 +56,33 @@ end
 
 end
 
+module Citrix
 
+module Ctx1
+
+  def self.decrypt_letter(block, v = 0)
+    f = (block[2].ord - 1) & 0x0f
+    s = (block[3].ord - 1) & 0x0f
+    ((f*16+s) ^ v).chr
+  end
+
+  def self.decrypt(password)
+
+    clear = ""
+    v = 0
+
+    password.scan(/..../).each do |block|
+      c = Citrix::Ctx1.decrypt_letter(block, v)
+      v = v ^ c.ord
+      clear << c
+    end
+    clear
+
+  end
+
+end
+
+end
 
 module CPassword
 
