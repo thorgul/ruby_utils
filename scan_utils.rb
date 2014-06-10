@@ -141,17 +141,13 @@ class Nmap < Generic
     @xml.xpath("//host/address[@addrtype='ipv4']").each do |xhost|
       ipv4 = Gul::Scan::xpath_attr(:xpath => xhost, :attr => "addr")
 
-      puts xhost.parent
-
       xhost.parent.xpath("address").each do |addr|
-        puts "addr => "+ Gul::Scan::xpath_attr(:xpath => addr, :attr => "addr")
         insert_host_values(:ip    => ipv4,
                            :title => "address:" + Gul::Scan::xpath_attr(:xpath => addr, :attr => "addrtype"),
                            :data  =>              Gul::Scan::xpath_attr(:xpath => addr, :attr => "addr"))
       end
 
       xhost.parent.xpath("hostnames/hostname").each do |hostname|
-        puts "hostname => " + Gul::Scan::xpath_attr(:xpath => hostname, :attr => "name")
         insert_host_values(:ip    => ipv4,
                            :title => "hostname:" + Gul::Scan::xpath_attr(:xpath => hostname, :attr => "type"),
                            :data  =>               Gul::Scan::xpath_attr(:xpath => hostname, :attr => "name"))
