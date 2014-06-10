@@ -28,24 +28,39 @@ class Generic
 
     @db = SQLite3::Database.new( path )
 
-    @db.execute( "create table if not exists  hosts ("   +
-                 "id integer primary key autoincrement," +
-                 "ip varchar(15),"                       +
-                 "port smallint,"                        +
+    @db.execute( "create table if not exists host_info (" +
+                 "id integer primary key autoincrement,"  +
+                 "ip varchar(15),"                        +
+                 "title TEXT,"                            +
+                 "data TEXT )" )
+    @db.execute( "create table if not exists port_info (" +
+                 "id integer primary key autoincrement,"  +
+                 "ip varchar(15),"                        +
+                 "port smallint,"                         +
                  "service TEXT )" )
-    @db.execute( "create table if not exists infos (" +
-                 "id integer,"                        +
-                 "source TEXT,"                       +
-                 "title TEXT,"                        +
+    @db.execute( "create table if not exists service_info (" +
+                 "id integer,"                               +
+                 "source TEXT,"                              +
+                 "title TEXT,"                               +
                  "data TEXT )" )
 
   end
 
   def insert_host_values(values=nil)
+    preped = @db.prepare( "insert into host_info values(NULL, ?, ?, ?)" )
+    preped.bind_params(values[:ip],
+                       values[:title],
+                       values[:data] )
+    preped.execute!
+    preped.close
+  end
+
+
+  def insert_port_values(values=nil)
 
     false if values.nil?
 
-    preped = @db.prepare( "insert into hosts values(NULL, ?, ?, ?)" )
+    preped = @db.prepare( "insert into port_info values(NULL, ?, ?, ?)" )
     preped.bind_params( values[:host],
                         values[:port],
                         values[:service] )
@@ -54,8 +69,8 @@ class Generic
     true
   end
 
-  def insert_info_values(values=nil)
-    preped = @db.prepare( "insert into infos values(?, ?, ?, ?)" )
+  def insert_service_values(values=nil)
+    preped = @db.prepare( "insert into service_info values(?, ?, ?, ?)" )
     preped.bind_params( values[:id],
                         values[:source],
                         values[:title],
@@ -69,7 +84,7 @@ class Generic
 
     return nil if values.nil?
 
-    id = @db.get_first_value( "select id from hosts where ip = ? and port = ?",
+    id = @db.get_first_value( "select id from port_info where ip = ? and port = ?",
                              values[:host],
                              values[:port])
 
@@ -77,7 +92,7 @@ class Generic
     return id if values[:create] == false
 
     values[:create] = false
-    insert_host_values(values)
+    insert_port_values(values)
 
     return get_service_id(values)
 
@@ -122,6 +137,28 @@ class Nmap < Generic
 
     @db.execute("BEGIN TRANSACTION")
 
+
+    @xml.xpath("//host/address[@addrtype='ipv4']").each do |xhost|
+      ipv4 = Gul::Scan::xpath_attr(:xpath => xhost, :attr => "addr")
+
+      puts xhost.parent
+
+      xhost.parent.xpath("address").each do |addr|
+        puts "addr => "+ Gul::Scan::xpath_attr(:xpath => addr, :attr => "addr")
+        insert_host_values(:ip    => ipv4,
+                           :title => "address:" + Gul::Scan::xpath_attr(:xpath => addr, :attr => "addrtype"),
+                           :data  =>              Gul::Scan::xpath_attr(:xpath => addr, :attr => "addr"))
+      end
+
+      xhost.parent.xpath("hostnames/hostname").each do |hostname|
+        puts "hostname => " + Gul::Scan::xpath_attr(:xpath => hostname, :attr => "name")
+        insert_host_values(:ip    => ipv4,
+                           :title => "hostname:" + Gul::Scan::xpath_attr(:xpath => hostname, :attr => "type"),
+                           :data  =>               Gul::Scan::xpath_attr(:xpath => hostname, :attr => "name"))
+      end
+
+    end
+
     open_ports.each do |open|
 
       port = open.parent
@@ -139,8 +176,7 @@ class Nmap < Generic
       s_service << Gul::Scan::xpath_attr(:xpath => xservice, :attr => "extrainfo", :header => " / ")
 
       s_host = Gul::Scan::xpath_attr(:xpath => xhost, :attr => "addr")
-
-      s_port = Gul::Scan::xpath_attr(:xpath => port, :attr => "portid")
+      s_port = Gul::Scan::xpath_attr(:xpath => port,  :attr => "portid")
 
       id = get_service_id(:host    => s_host,
                           :port    => s_port,
@@ -153,10 +189,10 @@ class Nmap < Generic
         title = Gul::Scan::xpath_attr(:xpath => script, :attr => "id")
         data  = Gul::Scan::xpath_attr(:xpath => script, :attr => "output")
 
-        insert_info_values(:id     => id,
-                           :source => "nmap",
-                           :title  => title,
-                           :data   => data )
+        insert_service_values(:id     => id,
+                              :source => "nmap",
+                              :title  => title,
+                              :data   => data )
       end
 
     end
@@ -195,10 +231,10 @@ class Nikto < Generic
 
     items.each do |item|
 
-      insert_info_values( :id     => id,
-                          :source => "nikto",
-                          :title  => item.xpath("namelink").text,
-                          :data   => item.xpath("description").text )
+      insert_service_values( :id     => id,
+                             :source => "nikto",
+                             :title  => item.xpath("namelink").text,
+                             :data   => item.xpath("description").text )
     end
 
     @db.execute("END TRANSACTION")

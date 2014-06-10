@@ -51,12 +51,19 @@ function hideshow(id){
       end
 
       db = SQLite3::Database.new( file )
-      ips = db.execute( "select distinct ip from hosts" )
+      ips = db.execute( "select distinct ip from port_info" )
       ips.sort_by! {|ip| ip.to_s.split('.').map{ |octet| octet.to_i} }
       ips.each do |ip|
 
 #        report.write("<div id=\"boxtitle\"><a href=\"javascript:hideshow('services_#{ip[0]}');\" id=\"title_#{ip[0]}\">+</a>#{ip[0]}</div>")
-        report.write("<div id=\"boxtitle\" onclick=\"javascript:hideshow('services_#{ip[0]}');\">#{ip[0]}</div>\n")
+        report.write("<div id=\"boxtitle\" onclick=\"javascript:hideshow('services_#{ip[0]}');\">")
+        report.write(ip[0])
+        hostnames = db.execute( "select data from host_info where ip = ? and title like 'hostname:%' ", ip[0] )
+        hostnames.sort_by! {|n| n.to_s.split('.').map{ |chunk| chunk.to_s}}
+        hostnames.each do |hostname|
+          report.write("<br>" + hostname[0])
+        end
+        report.write("</div>\n")
 
         report.write("<div class=\"boxbody\" id=\"services_#{ip[0]}\">\n")
 
@@ -69,7 +76,7 @@ function hideshow(id){
                 </tr>
         </table>\n")
 
-        services = db.execute( "select id,port,service from hosts where ip = ? order by port", ip[0] )
+        services = db.execute( "select id,port,service from port_info where ip = ? order by port", ip[0] )
         services.each do |service|
           report.write("<div onclick=\"javascript:hideshow('service_#{ip[0]}_#{service[1]}');\">
         <table width=\"100%\">
@@ -83,7 +90,7 @@ function hideshow(id){
 
           report.write("<div id=\"service_#{ip[0]}_#{service[1]}\" style=\"display: none\">
         <table width=\"100%\">\n")
-          infos = db.execute( "select title,data,source from infos where id = ?", service[0] )
+          infos = db.execute( "select title,data,source from service_info where id = ?", service[0] )
           infos.each do |info|
             report.write("      <tr>
         	        <td style=\"width:70px\"></td>
