@@ -58,11 +58,18 @@ function hideshow(id){
 #        report.write("<div id=\"boxtitle\"><a href=\"javascript:hideshow('services_#{ip[0]}');\" id=\"title_#{ip[0]}\">+</a>#{ip[0]}</div>")
         report.write("<div id=\"boxtitle\" onclick=\"javascript:hideshow('services_#{ip[0]}');\">")
         report.write(ip[0])
-        hostnames = db.execute( "select data from host_info where ip = ? and title like 'hostname:%' ", ip[0] )
+
+        ostype = db.execute( "select distinct data from host_info where ip = ? and title like 'os:type' ", ip[0] )
+        ostype.each do |type|
+          report.write("<br>( " + type[0] + " )")
+        end
+
+        hostnames = db.execute( "select distinct data from host_info where ip = ? and title like 'hostname:%' ", ip[0] )
         hostnames.sort_by! {|n| n.to_s.split('.').map{ |chunk| chunk.to_s}}
         hostnames.each do |hostname|
           report.write("<br>" + hostname[0])
         end
+
         report.write("</div>\n")
 
         report.write("<div class=\"boxbody\" id=\"services_#{ip[0]}\">\n")
@@ -90,7 +97,7 @@ function hideshow(id){
 
           report.write("<div id=\"service_#{ip[0]}_#{service[1]}\" style=\"display: none\">
         <table width=\"100%\">\n")
-          infos = db.execute( "select title,data,source from service_info where id = ?", service[0] )
+          infos = db.execute( "select distinct title,data,source from service_info where id = ?", service[0] )
           infos.each do |info|
             report.write("      <tr>
         	        <td style=\"width:70px\"></td>

@@ -238,6 +238,79 @@ class Nikto < Generic
 
 end
 
+class Ettercap < Generic
+
+  def xml2sql(xmlpath)
+
+    super
+
+    hosts = @xml.xpath("//etterlog/host")
+
+    if hosts.nil? or hosts.length == 0
+      puts "#{xmlpath}: No host found"
+      return
+    end
+
+    @db.execute("BEGIN TRANSACTION")
+
+    hosts.each do |host|
+
+      ipv4 = Gul::Scan::xpath_attr(:xpath => host, :attr => "ip")
+      insert_host_values(:ip    => ipv4,
+                         :title => "address:ipv4",
+                         :data  => ipv4)
+
+      hostname = host.xpath("hostname").text
+      unless hostname.length == 0
+        insert_host_values(:ip    => ipv4,
+                           :title => "hostname:PTR",
+                           :data  => hostname)
+      end
+
+      ostype = host.xpath("os").text
+      unless ostype.length == 0
+        insert_host_values(:ip    => ipv4,
+                           :title => "os:type",
+                           :data  => ostype)
+      end
+
+      host.xpath("port").each do |port|
+
+        s_port  = Gul::Scan::xpath_attr(:xpath => port, :attr => "addr")
+        service = Gul::Scan::xpath_attr(:xpath => port, :attr => "service")
+
+        id = get_service_id(:host    => ipv4,
+                            :port    => s_port,
+                            :service => service,
+                            :create  => true)
+
+        port.xpath("account").each do |account|
+
+
+          data = ""
+
+          account.xpath("./*").each do |x|
+            data << x.node_name + ": " + x.text + "\n"
+          end
+
+          insert_service_values(:id     => id,
+                                :source => "ettercap",
+                                :title  => "credentials",
+                                :data   => data )
+
+
+        end
+
+      end
+
+    end
+
+    @db.execute("END TRANSACTION")
+  end
+
+end
+
+
 end
 
 end
@@ -258,6 +331,8 @@ if $0 == __FILE__
       options[:type] = Gul::Scan::Nmap
     elsif t.downcase == "nikto"
       options[:type] = Gul::Scan::Nikto
+    elsif t.downcase == "ettercap"
+      options[:type] = Gul::Scan::Ettercap
     end
   end
 
