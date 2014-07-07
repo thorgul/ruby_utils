@@ -54,7 +54,7 @@ module CTF
       res = str.base64_decode
     elsif str.is_uri_encoded?
       res = URI.decode str
-    elsif str.starts_with? "\xff\x01"
+    elsif str.start_with? "\xff\x01"
       puts "That shit is a ViewState"
     end
 
