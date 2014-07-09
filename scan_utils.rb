@@ -47,14 +47,17 @@ class Generic
   end
 
   def insert_host_values(values=nil)
-    preped = @db.prepare( "insert into host_info values(NULL, ?, ?, ?)" )
+    preped = @db.prepare( "insert into host_info select NULL, ?, ?, ? where not exists(select 1 from host_info where ip = ? and title = ? and data = ?) " )
+
     preped.bind_params(values[:ip],
+                       values[:title],
+                       values[:data],
+                       values[:ip],
                        values[:title],
                        values[:data] )
     preped.execute!
     preped.close
   end
-
 
   def insert_port_values(values=nil)
 
@@ -80,6 +83,7 @@ class Generic
   end
 
 
+
   def get_service_id(values=nil)
 
     return nil if values.nil?
@@ -96,6 +100,10 @@ class Generic
 
     return get_service_id(values)
 
+  end
+
+  def parse(path)
+    self.xml2sql(xmlpath)
   end
 
   def xml2sql(xmlpath)
@@ -238,11 +246,40 @@ class Nikto < Generic
 
 end
 
+
 class Ettercap < Generic
 
   def xml2sql(xmlpath)
 
+    if File.exists?(xmlpath)
+      tmp = File.open( xmlpath )
+
+      line = ""
+      line = tmp.readline.chomp while line == ""
+
+      if line.start_with? "\x1b\x5b\x31\x6d\x65\x74\x74\x65\x72"
+        while line == ""  or
+            line.start_with? "\x1b\x5b\x31\x6d\x65\x74\x74\x65\x72"
+          line = tmp.readline.chomp
+        end
+
+        f = File.open( ".scan_utils.tmp", mode="w" )
+        f.write line + "\n"
+        f.write tmp.read
+        f.close
+
+        xmlpath = ".scan_utils.tmp"
+      end
+
+      tmp.close
+    end
+
     super
+
+    if @xml.nil?
+      puts "#{xmlpath} is not a valid xml file"
+      return
+    end
 
     hosts = @xml.xpath("//etterlog/host")
 
@@ -310,6 +347,46 @@ class Ettercap < Generic
 
 end
 
+class P0f < Generic
+
+  def parse(path)
+    self.p0f2sql(path)
+  end
+
+  def p0f2sql(xmlpath)
+
+    @f = File.open(xmlpath)
+
+    @db.execute("BEGIN TRANSACTION")
+
+    while (line = @f.gets) != nil
+      next unless line.start_with? "<"
+      begin
+        ip = line.match(/\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b/)[0]
+        os = line.match(/ - (.*?)\(/)
+        if os.nil?
+          os = line.match(/ - (.*?)/)
+        end
+        os = os[1]
+      rescue
+        puts line
+        next
+      end
+
+      os.strip!
+      next if os.length == 0 or os.start_with? "UNKNOWN"
+
+
+      insert_host_values(:ip    => ip,
+                         :title => "os:type",
+                         :data  => os)
+    end
+
+    @db.execute("END TRANSACTION")
+
+  end
+
+end
 
 end
 
@@ -333,6 +410,8 @@ if $0 == __FILE__
       options[:type] = Gul::Scan::Nikto
     elsif t.downcase == "ettercap"
       options[:type] = Gul::Scan::Ettercap
+    elsif t.downcase == "p0f"
+      options[:type] = Gul::Scan::P0f
     end
   end
 
@@ -352,7 +431,7 @@ if $0 == __FILE__
 
   ARGV.each do |xmlfile|
     puts "Processing #{xmlfile}"
-    parser.xml2sql(xmlfile)
+    parser.parse(xmlfile)
   end
 
   parser.close
