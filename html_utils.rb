@@ -52,8 +52,12 @@ function hideshow(id){
 
       db = SQLite3::Database.new( file )
       ips = db.execute( "select distinct ip from port_info" )
-      ips.sort_by! {|ip| ip.to_s.split('.').map{ |octet| octet.to_i} }
+      ips.sort_by! {|ip| ip[0].to_s.split('.').map{ |octet| octet.to_i} }
       ips.each do |ip|
+
+        if opts[:filter]
+          next if opts[:filter].call(ip[0]) == false
+        end
 
 #        report.write("<div id=\"boxtitle\"><a href=\"javascript:hideshow('services_#{ip[0]}');\" id=\"title_#{ip[0]}\">+</a>#{ip[0]}</div>")
         report.write("<div id=\"boxtitle\" onclick=\"javascript:hideshow('services_#{ip[0]}');\">")
@@ -131,9 +135,22 @@ if $0 == __FILE__
 
   abort "Usage is #$0: sqlite_file1 <sqlite_file2> <sqlite_file3> ..." if ARGV.length == 0
 
+  filter = nil
+
+  if ARGV.length > 2 and ARGV[0] == "--filter" and ARGV[1] == "local"
+    filter = Proc.new do |x|
+      res = false
+      res = true if x.match(/^(10|127|192\.168)\./)
+      res
+    end
+    ARGV.shift
+    ARGV.shift
+  end
+
+
   output_path = "sqlite_report.html"
   output_path = File.basename(ARGV[0], File.extname(ARGV[0])) + ".html" if ARGV.length == 1
 
-  Gul::HTML::sqlite_report(:files => ARGV, :output => output_path)
+  Gul::HTML::sqlite_report(:files => ARGV, :output => output_path, :filter => filter)
 
 end
