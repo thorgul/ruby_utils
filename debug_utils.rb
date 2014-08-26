@@ -31,6 +31,10 @@ def print_ok(msg)
   print_msg("[#{green('+')}]", msg)
 end
 
+def print_nok(msg)
+  print_msg("[#{red('-')}]", msg)
+end
+
 def print_error(msg)
   print_msg("[#{red('!')}]", msg)
 end
