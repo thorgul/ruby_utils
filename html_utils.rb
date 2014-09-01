@@ -30,6 +30,37 @@ function hideshow(id){
 </script>"
   SQLITE_REPORT_TRAILER = "</body>"
 
+  def self.sqlite_report_service(db, report, sqlquery, name=nil)
+    res = db.execute( sqlquery )
+
+    return if res.nil? or res.length == 0
+
+    report.write("<div id=\"boxtitle\" onclick=\"javascript:hideshow('#{name} Servers');\" style=\"background-color:#ffaa44\">")
+    report.write("<b>#{name} Servers</b>")
+    report.write("</div>\n")
+
+    report.write("<div class=\"boxbody\" id=\"#{name} Servers Table\">\n")
+
+    report.write("        <table width=\"100%\">
+                <tr>
+                        <td style=\"width:150px\" valign=\"top\" ><b>IP</b></td>
+                        <td style=\"width:150px\" valign=\"top\" ><b>Port</b></td>
+                        <td><b>Service</b></td>
+                </tr>
+        </table>\n")
+
+    res.each do |unit|
+        report.write("        <table width=\"100%\">
+                <tr>
+                        <td style=\"width:150px\" valign=\"top\" ><a href=\"#services_#{unit[0]}\">#{unit[0]}</a></td>
+                        <td style=\"width:150px\" valign=\"top\" >#{unit[1]}</td>
+                        <td>#{unit[2]}</td>
+                </tr>
+        </table>\n")
+      end
+      report.write("</div>\n")
+  end
+
   def self.sqlite_report(opts)
     files = opts[:files]
     files = [ opts[:files] ] if files.class == String
@@ -51,6 +82,27 @@ function hideshow(id){
       end
 
       db = SQLite3::Database.new( file )
+
+      # Important Web Servers
+      sqlite_report_service(db, report, "select distinct ip, port, service from port_info LEFT JOIN service_info ON port_info.id=service_info.id where " +
+                                        "port_info.port = 80 and (port_info.service like '%Lotus Domino%' or service_info.title like '%Lotus Domino%') order by service", "Interesting Web Servers")
+
+      # Databases
+      sqlite_report_service(db, report, "select ip, port, service from port_info LEFT JOIN service_info ON port_info.id=service_info.id where " +
+                                        "port_info.service like '%sql%'    or service_info.title like '%sql%'    or " +
+                                        "port_info.service like '%access%' or service_info.title like '%access%' or " +
+                                        "port_info.service like '%db2%'    or service_info.title like '%db2%' order by service", "Databases")
+
+      # Tomcat Servers
+      sqlite_report_service(db, report, "select ip, port, data from port_info JOIN service_info ON port_info.id=service_info.id where " +
+                                        "service like '%tomcat%' and service_info.title = 'http-title' order by data", "Tomcat")
+
+      # VNC
+      sqlite_report_service(db, report, "select ip, port, data from port_info JOIN service_info ON port_info.id=service_info.id where " +
+                                        "service like '%VNC%' and service_info.title != 'http-title' order by data", "VNC")
+
+
+      # Report for each server
       ips = db.execute( "select distinct ip from port_info" )
       ips.sort_by! {|ip| ip[0].to_s.split('.').map{ |octet| octet.to_i} }
       ips.each do |ip|
@@ -137,12 +189,16 @@ if $0 == __FILE__
 
   filter = nil
 
-  if ARGV.length > 2 and ARGV[0] == "--filter" and ARGV[1] == "local"
-    filter = Proc.new do |x|
-      res = false
-      res = true if x.match(/^(10|127|192\.168)\./)
-      res
+  if ARGV.length > 2 and ARGV[0] == "--filter"
+
+    if ARGV[1] == "local"
+      filter = Proc.new do |x|
+        res = false
+        res = true if x.match(/^(10|127|192\.168)\./)
+        res
+      end
     end
+
     ARGV.shift
     ARGV.shift
   end
