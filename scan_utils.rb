@@ -22,7 +22,6 @@ module Scan
 
 class Generic
 
-
   # File.basename(xmlpath, File.extname(xmlpath)) + ".sqlite"
   def initialize(path)
 
@@ -47,41 +46,55 @@ class Generic
   end
 
   def insert_host_values(values=nil)
-    preped = @db.prepare( "insert into host_info select NULL, ?, ?, ? where not exists(select 1 from host_info where ip = ? and title = ? and data = ?) " )
 
-    preped.bind_params(values[:ip],
-                       values[:title],
-                       values[:data],
-                       values[:ip],
-                       values[:title],
-                       values[:data] )
+    false if values.nil?
+
+    preped = @db.prepare( "insert into host_info select NULL, ?, ?, ? where not exists(select 1 from host_info where ip = ? and title = ? and data = ?)" )
+
+    preped.bind_params( values[:ip],
+                        values[:title],
+                        values[:data],
+                        values[:ip],
+                        values[:title],
+                        values[:data] )
     preped.execute!
     preped.close
+    true
   end
 
   def insert_port_values(values=nil)
 
     false if values.nil?
 
-    preped = @db.prepare( "insert into port_info values(NULL, ?, ?, ?)" )
+    preped = @db.prepare( "insert into port_info select NULL, ?, ?, ? where not exists(select 1 from port_info where ip = ? and port = ? and service = ?)" )
     preped.bind_params( values[:host],
                         values[:port],
-                        values[:service] )
+                        values[:service],
+                        values[:host],
+                        values[:port],
+                        values[:service])
     preped.execute!
     preped.close
     true
   end
 
   def insert_service_values(values=nil)
-    preped = @db.prepare( "insert into service_info values(?, ?, ?, ?)" )
+
+    false if values.nil?
+
+    preped = @db.prepare( "insert into service_info select ?, ?, ?, ? where not exists(select 1 from service_info where id = ? and source = ? and title = ? and data = ?)" )
     preped.bind_params( values[:id],
                         values[:source],
                         values[:title],
-                        values[:data] )
+                        values[:data],
+                        values[:id],
+                        values[:source],
+                        values[:title],
+                        values[:data]  )
     preped.execute!
     preped.close
+    true
   end
-
 
 
   def get_service_id(values=nil)
@@ -103,7 +116,7 @@ class Generic
   end
 
   def parse(path)
-    self.xml2sql(xmlpath)
+    self.xml2sql(path)
   end
 
   def xml2sql(xmlpath)
@@ -403,7 +416,7 @@ if $0 == __FILE__
     options[:output] = o
   end
 
-  opts.on("-t", "--type TYPE", "The xml files type (nikto|nmap)") do |t|
+  opts.on("-t", "--type TYPE", "The xml files type (nikto|nmap|ettercap|p0f)") do |t|
     if    t.downcase == "nmap"
       options[:type] = Gul::Scan::Nmap
     elsif t.downcase == "nikto"
