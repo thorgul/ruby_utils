@@ -149,7 +149,7 @@ class Smb < Generic
       begin
 
         smbhost = SmbHost.new(:ip => ip,
-                              :username => opts[:username]
+                              :username => opts[:username],
                               :password => opts[:password],
                               :domain   => opts[:domain])
 
@@ -211,7 +211,7 @@ class Smb < Generic
 
       begin
         smbhost = SmbHost.new(:ip => ip,
-                              :username => opts[:username]
+                              :username => opts[:username],
                               :password => opts[:password],
                               :domain   => opts[:domain])
         ifiles = smbhost.list_files("smb://#{ip}/#{share}/")
