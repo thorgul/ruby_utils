@@ -88,12 +88,12 @@ class Screenshot < Generic
       if ssl_service?(id)
         # puts "https://#{ip}:#{port}"
         hostnames.each do |h|
-          system("/home/gul/work/tools/web/cutycapt/CutyCapt/CutyCapt --url=https://#{h}:#{port}/ --out=#{opts[:outdir]}/screenshot_https_#{h}:#{port}.png --delay=10000 --insecure")
+          system("/home/gul/work/tools/web/cutycapt/CutyCapt/CutyCapt --url=https://#{h}:#{port}/ --out=#{opts[:output]}/screenshot_https_#{h}:#{port}.png --delay=10000 --insecure")
         end
       else
         # puts "http://#{ip}:#{port}"
         hostnames.each do |h|
-          system("/home/gul/work/tools/web/cutycapt/CutyCapt/CutyCapt --url=http://#{h}:#{port}/  --out=#{opts[:outdir]}/screenshot_http_#{h}:#{port}.png --delay=10000")
+          system("/home/gul/work/tools/web/cutycapt/CutyCapt/CutyCapt --url=http://#{h}:#{port}/  --out=#{opts[:output]}/screenshot_http_#{h}:#{port}.png --delay=10000")
         end
       end
 
