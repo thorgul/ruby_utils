@@ -58,6 +58,7 @@ end
 
 module Citrix
 
+# Doc is there => https://intrepidusgroup.com/insight/2014/01/good-fun-with-bad-crypto/
 module Ctx1
 
   def self.decrypt_letter(block, v = 0)
@@ -86,7 +87,7 @@ end
 
 module CPassword
 
-  $key = "\x4e\x99\x06\xe8\xfc\xb6\x6c\xc9" +
+  @@key = "\x4e\x99\x06\xe8\xfc\xb6\x6c\xc9" +
          "\xfa\xf4\x93\x10\x62\x0f\xfe\xe8" +
          "\xf4\x96\xe8\x06\xcc\x05\x79\x90" +
          "\x20\x9b\x09\xa4\x33\xb6\x6c\x1b"
@@ -98,10 +99,9 @@ module CPassword
       begin
         aes = OpenSSL::Cipher::Cipher.new("AES-256-CBC")
         aes.decrypt
-        aes.key = $key
+        aes.key = @@key
         test_hash = hash + "=" * pad
         res = aes.update(test_hash.base64_decode) + aes.final
-
         res = res.gsub!(/\x00/, '')
         break
       rescue
@@ -113,7 +113,7 @@ module CPassword
   def self.encrypt(password)
     aes = OpenSSL::Cipher::Cipher.new("AES-256-CBC")
     aes.encrypt
-    aes.key = $key
+    aes.key = @@key
     uni_pass = password.each_byte.map{|x| "#{x.chr}\x00" }.join
     res = aes.update(uni_pass) + aes.final
     res.base64_encode.gsub(/=+\n$/, "")
@@ -125,7 +125,7 @@ end
 # Trash it if you are annoying about licensing and stuff
 class VNC
 
-  $key = [23,82,107,6,35,78,88,7].map{|x| x.chr}.join
+  @@key = [23,82,107,6,35,78,88,7].map{|x| x.chr}.join
   BLOCK_SIZE = 8
 
   attr_reader :mode
@@ -136,11 +136,11 @@ class VNC
     end
     @mode = mode
 
-    $key = $key[0, BLOCK_SIZE]
-    $key << 0.chr * (BLOCK_SIZE - $key.length)
-    @key = $key
+    @@key = @@key[0, BLOCK_SIZE]
+    @@key << 0.chr * (BLOCK_SIZE - @@key.length)
+    @key = @@key
 
-    @keys = self.class.send :prepare_key_stage2, self.class.send(:prepare_key_stage1, $key, mode)
+    @keys = self.class.send :prepare_key_stage2, self.class.send(:prepare_key_stage1, @@key, mode)
 
     @buf = ''
   end
