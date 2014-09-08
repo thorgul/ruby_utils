@@ -41,6 +41,58 @@ class Generic
 
   end
 
+  def insert_port_values(values=nil)
+
+    false if values.nil?
+
+    preped = @db.prepare( "insert into port_info select NULL, ?, ?, ? where not exists(select 1 from port_info where ip = ? and port = ? and service = ?)" )
+    preped.bind_params( values[:host],
+                        values[:port],
+                        values[:service],
+                        values[:host],
+                        values[:port],
+                        values[:service])
+    preped.execute!
+    preped.close
+    true
+  end
+
+  def insert_service_values(values=nil)
+
+    false if values.nil?
+
+    preped = @db.prepare( "insert into service_info select ?, ?, ?, ? where not exists(select 1 from service_info where id = ? and source = ? and title = ? and data = ?)" )
+    preped.bind_params( values[:id],
+                        values[:source],
+                        values[:title],
+                        values[:data],
+                        values[:id],
+                        values[:source],
+                        values[:title],
+                        values[:data]  )
+    preped.execute!
+    preped.close
+    true
+  end
+
+  def get_service_id(values=nil)
+
+    return nil if values.nil?
+
+    id = @db.get_first_value( "select id from port_info where ip = ? and port = ?",
+                             values[:host],
+                             values[:port])
+
+    return id unless id.nil?
+    return id if values[:create] == false
+
+    values[:create] = false
+    insert_port_values(values)
+
+    return get_service_id(values)
+
+  end
+
   def ssl_service?(id)
 
     preped = @db.prepare( "select title from service_info where id = ? and title like '%ssl%'" )
@@ -54,7 +106,6 @@ class Generic
     service_match?(id, "https")
 
   end
-
 
   def close()
 
@@ -88,12 +139,24 @@ class Screenshot < Generic
       if ssl_service?(id)
         # puts "https://#{ip}:#{port}"
         hostnames.each do |h|
-          system("/home/gul/work/tools/web/cutycapt/CutyCapt/CutyCapt --url=https://#{h}:#{port}/ --out=#{opts[:output]}/screenshot_https_#{h}:#{port}.png --delay=10000 --insecure")
+          output = "#{opts[:output]}/screenshot_https_#{h}:#{port}.png"
+          system("/home/gul/work/tools/web/cutycapt/CutyCapt/CutyCapt --url=https://#{h}:#{port}/ --out=#{output} --delay=10000 --insecure")
+          insert_service_values(:id     => get_service_id(:host => ip, :port => port),
+                                :source => "map_utils",
+                                :title  => "screenshot",
+                                :data   => output)
+
         end
       else
         # puts "http://#{ip}:#{port}"
         hostnames.each do |h|
-          system("/home/gul/work/tools/web/cutycapt/CutyCapt/CutyCapt --url=http://#{h}:#{port}/  --out=#{opts[:output]}/screenshot_http_#{h}:#{port}.png --delay=10000")
+          output = "#{opts[:output]}/screenshot_http_#{h}:#{port}.png"
+          system("/home/gul/work/tools/web/cutycapt/CutyCapt/CutyCapt --url=http://#{h}:#{port}/  --out=#{output} --delay=10000")
+          insert_service_values(:id     => get_service_id(:host => ip, :port => port),
+                                :source => "map_utils",
+                                :title  => "screenshot",
+                                :data   => output)
+
         end
       end
 

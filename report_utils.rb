@@ -30,12 +30,32 @@ function hideshow(id){
 </script>"
   SQLITE_REPORT_TRAILER = "</body>"
 
+  def self.gen_pict_gallery(db, report)
+    res = db.execute( "select data from service_info where title = 'screenshot' " )
+
+    return if res.nil? or res.length == 0
+
+
+    report.write("<div id=\"boxtitle\" onclick=\"javascript:hideshow('Screenshots');\" style=\"background-color:#ffaa44\">")
+    report.write("<b>Screenshots</b>")
+    report.write("</div>\n")
+
+    report.write("<div class=\"boxbody\" id=\"Screenshots\">\n")
+
+    res.each do |unit|
+      report.write "<a href=\"#{unit[0]}\">\n"
+      report.write "<img src=\"#{unit[0]}\" width=400 height=400 border=2 />\n"
+      report.write "</a>\n"
+    end
+    report.write("</div>\n")
+  end
+
   def self.sqlite_report_service(db, report, sqlquery, name=nil)
     res = db.execute( sqlquery )
 
     return if res.nil? or res.length == 0
 
-    report.write("<div id=\"boxtitle\" onclick=\"javascript:hideshow('#{name} Servers');\" style=\"background-color:#ffaa44\">")
+    report.write("<div id=\"boxtitle\" onclick=\"javascript:hideshow('#{name} Servers Table');\" style=\"background-color:#ffaa44\">")
     report.write("<b>#{name} Servers</b>")
     report.write("</div>\n")
 
@@ -82,6 +102,9 @@ function hideshow(id){
       end
 
       db = SQLite3::Database.new( file )
+
+      # Stupid image gallery
+      gen_pict_gallery(db, report)
 
       # Important Web Servers
       sqlite_report_service(db, report, "select distinct ip, port, service from port_info LEFT JOIN service_info ON port_info.id=service_info.id where " +
