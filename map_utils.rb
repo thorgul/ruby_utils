@@ -230,6 +230,7 @@ class Smb < Generic
                                   })
           end
         end
+        smbhost.close
       rescue Exception => e
         print_debug "#{e}"
       end
@@ -288,6 +289,7 @@ class Smb < Generic
                                   :data   => i,
                                 })
         end
+        smbhost.close
 
       rescue Exception => e
         print_error "HONOES !!! #{e}"
@@ -413,6 +415,9 @@ class SmbHost
     shares
   end
 
+  def close()
+    @conn.close
+  end
 
 end
 
@@ -456,7 +461,7 @@ if $0 == __FILE__
     when "screenshot"
       options[:actions] << Gul::Map::Screenshot
     when "smb"
-      options[:actions] << Gul::Map::Samba
+      options[:actions] << Gul::Map::Smb
     end
   end
 
