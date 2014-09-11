@@ -108,7 +108,12 @@ function hideshow(id){
 
       # Important Web Servers
       sqlite_report_service(db, report, "select distinct ip, port, service from port_info LEFT JOIN service_info ON port_info.id=service_info.id where " +
-                                        "port_info.port = 80 and (port_info.service like '%Lotus Domino%' or service_info.title like '%Lotus Domino%') order by service", "Interesting Web Servers")
+                                        "( port_info.port = 80 or port_info.port = 443 ) and " +
+                                        "( port_info.service  like '%Lotus%' or " +
+                                          "service_info.title like '%Lotus%' or " +
+                                          "service_info.data  like '%Lotus%' ) " +
+                                        "order by service",
+                                        "Interesting Web Servers")
 
       # Databases
       sqlite_report_service(db, report, "select ip, port, service from port_info LEFT JOIN service_info ON port_info.id=service_info.id where " +
