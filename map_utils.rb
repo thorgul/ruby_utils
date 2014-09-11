@@ -140,7 +140,7 @@ class Screenshot < Generic
         # puts "https://#{ip}:#{port}"
         hostnames.each do |h|
           output = "#{opts[:output]}/screenshot_https_#{h}:#{port}.png"
-          system("/home/gul/work/tools/web/cutycapt/CutyCapt/CutyCapt --url=https://#{h}:#{port}/ --out=#{output} --delay=10000 --insecure")
+          system("CutyCapt --url=https://#{h}:#{port}/ --out=#{output} --delay=10000 --insecure")
           insert_service_values(:id     => get_service_id(:host => ip, :port => port),
                                 :source => "map_utils",
                                 :title  => "screenshot",
@@ -151,7 +151,7 @@ class Screenshot < Generic
         # puts "http://#{ip}:#{port}"
         hostnames.each do |h|
           output = "#{opts[:output]}/screenshot_http_#{h}:#{port}.png"
-          system("/home/gul/work/tools/web/cutycapt/CutyCapt/CutyCapt --url=http://#{h}:#{port}/  --out=#{output} --delay=10000")
+          system("CutyCapt --url=http://#{h}:#{port}/  --out=#{output} --delay=10000")
           insert_service_values(:id     => get_service_id(:host => ip, :port => port),
                                 :source => "map_utils",
                                 :title  => "screenshot",
