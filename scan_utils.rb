@@ -51,6 +51,7 @@ class Generic
 
     preped = @db.prepare( "insert into host_info select NULL, ?, ?, ? where not exists(select 1 from host_info where ip = ? and title = ? and data = ?)" )
 
+    values.each_pair {|k,v| values[k] = v.strip if v.class == String }
     preped.bind_params( values[:ip],
                         values[:title],
                         values[:data],
@@ -66,6 +67,7 @@ class Generic
 
     false if values.nil?
 
+    values.each_pair {|k,v| values[k] = v.strip if v.class == String }
     preped = @db.prepare( "insert into port_info select NULL, ?, ?, ? where not exists(select 1 from port_info where ip = ? and port = ? and service = ?)" )
     preped.bind_params( values[:host],
                         values[:port],
@@ -82,6 +84,7 @@ class Generic
 
     false if values.nil?
 
+    values.each_pair {|k,v| values[k] = v.strip if v.class == String }
     preped = @db.prepare( "insert into service_info select ?, ?, ?, ? where not exists(select 1 from service_info where id = ? and source = ? and title = ? and data = ?)" )
     preped.bind_params( values[:id],
                         values[:source],
@@ -401,6 +404,51 @@ class P0f < Generic
 
 end
 
+class SslScan < Generic
+
+  def xml2sql(xmlpath)
+
+    super
+
+    items = @xml.xpath("//document/ssltest/cipher")
+    s_host = Gul::Scan::xpath_attr(:xpath => @xml.xpath("//document/ssltest"), :attr => "host")
+    s_port = Gul::Scan::xpath_attr(:xpath => @xml.xpath("//document/ssltest"), :attr => "port")
+
+    if items.nil? or items.length == 0
+      puts "#{xmlpath}: No items found"
+      return
+    end
+
+    if s_host.nil? or s_port.nil?
+      puts "#{xmlpath}: Failed to validate host (#{s_host}) / port (#{s_port})"
+      return
+    end
+
+    @db.execute("BEGIN TRANSACTION")
+
+    id = get_service_id( :host   => s_host,
+                         :port   => s_port,
+                         :create => true)
+
+    items.each do |item|
+
+      puts item.xpath("status")
+
+      if Gul::Scan::xpath_attr(:xpath => item, :attr => "status") == "accepted"
+        insert_service_values( :id     => id,
+                               :source => "sslscan",
+                               :title  => "accepted-cipher",
+                               :data   => "%s - %s bits - %s" % [ Gul::Scan::xpath_attr(:xpath => item, :attr => "sslversion"),
+                                                                  Gul::Scan::xpath_attr(:xpath => item, :attr => "bits"),
+                                                                  Gul::Scan::xpath_attr(:xpath => item, :attr => "cipher") ] )
+      end
+    end
+
+    @db.execute("END TRANSACTION")
+  end
+
+end
+
 end
 
 end
@@ -425,6 +473,8 @@ if $0 == __FILE__
       options[:type] = Gul::Scan::Ettercap
     elsif t.downcase == "p0f"
       options[:type] = Gul::Scan::P0f
+    elsif t.downcase == "sslscan"
+      options[:type] = Gul::Scan::SslScan
     end
   end
 
