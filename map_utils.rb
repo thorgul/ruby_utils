@@ -47,18 +47,18 @@ class Generic
                                             "FROM service_info " +
                                             "WHERE id = ? "      +
                                             "AND title LIKE '%ssl%'" ),
-      :get_http_services    => @db.prepare( "SELECT id,ip,port " +
+      :get_http_services    => @db.prepare( "SELECT DISTINCT id,ip,port " +
                                             "FROM port_info "    +
                                             "WHERE service LIKE '%http%'" ),
-      :get_ip_hostnames     => @db.prepare( "SELECT data "    +
+      :get_ip_hostnames     => @db.prepare( "SELECT DISTINCT data "    +
                                             "FROM host_info " +
                                             "WHERE ip = ? "   +
                                             "AND title LIKE 'hostname:%'" ),
-      :get_vnc_services     => @db.prepare( "SELECT id,ip,port "          +
+      :get_vnc_services     => @db.prepare( "SELECT DISTINCT id,ip,port "          +
                                             "FROM port_info "             +
                                             "WHERE service LIKE '%vnc%' " +
                                             "AND service NOT LIKE 'vnc-http %'" ),
-      :get_smb_services     => @db.prepare( "SELECT id,ip "   +
+      :get_smb_services     => @db.prepare( "SELECT DISTINCT id,ip "   +
                                             "FROM port_info " +
                                             "WHERE port = 445" ),
       :get_smb_shares       => @db.prepare( "SELECT DISTINCT port_info.id,ip,data " +
@@ -157,34 +157,23 @@ class Screenshot < Generic
       hostnames = @prep[:get_ip_hostnames].execute!(ip).flatten!
       (hostnames.nil? && hostnames = [ ip ]) || hostnames << ip
 
-      if ssl_service?(id)
-        # puts "https://#{ip}:#{port}"
-        hostnames.each do |h|
-          output = "#{opts[:output]}/screenshot_https_#{h}:#{port}.png"
-          if opts[:resume].nil? or ( File.exist?(output) and Digest::MD5.hexdigest(File.read(output)) == "5d3a8ed3031d0c01bfeb20ef4f19dc92" )
-            print_debug "#{h}:#{port}"
-            system("CutyCapt --url=https://#{h}:#{port}/ --out=#{output} --delay=10000 --insecure")
-          end
-          insert_service_values(:id     => get_service_id(:host => ip, :port => port),
-                                :source => "map_utils",
-                                :title  => "screenshot",
-                                :data   => output)
+      proto = "http"
+      proto << "s" if ssl_service?(id)
 
+      # puts "https://#{ip}:#{port}"
+      hostnames.each do |h|
+        output = "#{opts[:output]}/screenshot_#{proto}_#{h}:#{port}.png"
+        if opts[:resume].nil? or ( File.exist?(output) and Digest::MD5.hexdigest(File.read(output)) == "5d3a8ed3031d0c01bfeb20ef4f19dc92" )
+          print_debug "#{h}:#{port}"
+          command =  "CutyCapt --url=#{proto}://#{h}:#{port}/ --out=#{output} --delay=10000"
+          command << " --insecure"      if proto  == "https"
+          command << " 2>&1 >/dev/null" if $debug == false
+          system(command)
         end
-      else
-        # puts "http://#{ip}:#{port}"
-        hostnames.each do |h|
-          output = "#{opts[:output]}/screenshot_http_#{h}:#{port}.png"
-          if opts[:resume].nil? or ( File.exist?(output) and Digest::MD5.hexdigest(File.read(output)) == "5d3a8ed3031d0c01bfeb20ef4f19dc92" )
-            print_debug "#{h}:#{port}"
-            system("CutyCapt --url=http://#{h}:#{port}/  --out=#{output} --delay=10000")
-          end
-          insert_service_values(:id     => get_service_id(:host => ip, :port => port),
-                                :source => "map_utils",
-                                :title  => "screenshot",
-                                :data   => output)
-
-        end
+        insert_service_values(:id     => get_service_id(:host => ip, :port => port),
+                              :source => "map_utils",
+                              :title  => "screenshot",
+                              :data   => output)
       end
 
     end
@@ -247,17 +236,20 @@ class Smb < Generic
                               :workgroup => opts[:workgroup])
 
         shares = smbhost.list_shares()
-        shares.each do |s|
-          unless s.downcase == "admin$" or
-                 s.downcase == "ipc$" or
-                 s.downcase == "print$"
-            print_info "Share found: #{ip}/#{s}"
-            insert_service_values({
-                                    :id     => id,
-                                    :source => "netbios-map",
-                                    :title  => "netbios-share",
-                                    :data   => s,
-                                  })
+        unless shares.nil?
+
+          shares.each do |s|
+            unless s.downcase == "admin$" or
+                s.downcase == "ipc$" or
+                s.downcase == "print$"
+              print_info "Share found: #{ip}/#{s}"
+              insert_service_values({
+                                      :id     => id,
+                                      :source => "netbios-map",
+                                      :title  => "netbios-share",
+                                      :data   => s,
+                                    })
+            end
           end
         end
       rescue Exception => e
@@ -313,19 +305,24 @@ class Smb < Generic
         ### ifiles = smbhost.list_files("smb://#{ip}/#{share}/")
         ### print_info "Found #{ifiles.length} files !"
 
-        smbhost.get_users_home_dir("smb://#{ip}/#{share}/").each do |home|
-          smbhost.get_credentials(home, true)
-        end
-        # smbhost.list_files("smb://#{ip}/#{share}/")
+        users_home = smbhost.get_users_home_dir("smb://#{ip}/#{share}/")
+        unless users_home.nil?
 
-        ### ifiles.each do |i|
-        ###   insert_service_values({
-        ###                           :id     => id,
-        ###                           :source => "netbios-map",
-        ###                           :title  => "netbios-shared-file",
-        ###                           :data   => i,
-        ###                         })
-        ### end
+          users_home.each do |home|
+            smbhost.get_credentials(home, true)
+            smbhost.list_files("#{home}/Desktop/")
+          end
+          # smbhost.list_files("smb://#{ip}/#{share}/")
+
+          ### ifiles.each do |i|
+          ###   insert_service_values({
+          ###                           :id     => id,
+          ###                           :source => "netbios-map",
+          ###                           :title  => "netbios-shared-file",
+          ###                           :data   => i,
+          ###                         })
+          ### end
+        end
       rescue Exception => e
         print_error "HONOES !!! #{e}"
       end
@@ -338,6 +335,7 @@ class Smb < Generic
 
   def parse(opts)
 
+    # print_error "!!! map_netshare is deactivated !!!"
     unless opts[:resume]
       map_netshares(opts)
     end
@@ -374,8 +372,9 @@ class SmbHost
     @password  = opts[:password]
     @workgroup = opts[:workgroup]
 
+    # print_debug "#{@workgroup}\\#{@username}%#{@password}"
     @conn.auth_callback {|server, share|
-      [@username, @password]
+      [@username, @password, @workgroup]
     }
 
   end
@@ -404,28 +403,27 @@ class SmbHost
 
     smbdir = @conn.opendir(path)
 
-    while dent = smbdir.read
-      next if dent.name.to_s == "." or dent.name.to_s == ".."
+    begin
 
-      # if important?(dent)
-        print_debug "Found: " + path + dent.name.to_s
+      while dent = smbdir.read
+        next if dent.name.to_s == "." or dent.name.to_s == ".."
+
+        # if important?(dent)
+        print_info "Found: " + path + dent.name.to_s
         files << path + dent.name.to_s
-      # end
+        # end
 
-      if dent.file?
+        # if dent.file?
         # puts "File: " + path + dent.name.to_s
-      elsif dent.dir? and not dent.link?
-        # puts "Dir:  " + path + dent.name.to_s
-        begin
+        # elsif dent.dir? and not dent.link?
+        if dent.dir? and not dent.link?
+          # puts "Dir:  " + path + dent.name.to_s
           files = files + list_files(path + dent.name.to_s + "/")
-        rescue Exception => e
-          print_debug "#{e}"
         end
       end
-    end
 
-    begin
       smbdir.close
+
     rescue Exception => e
       print_debug "#{e}"
     end
@@ -437,6 +435,7 @@ class SmbHost
   def list_shares()
     shares = []
 
+    print_debug "smb://#{@ip}/"
     begin
       @conn.opendir("smb://#{@ip}/") do |smbdir|
         while dent = smbdir.read
@@ -454,6 +453,7 @@ class SmbHost
 
     home_dir = []
     user_dir = nil
+    print_debug "$HOME: #{path}"
     share = @conn.opendir(path)
 
     while dent = share.read
@@ -465,11 +465,13 @@ class SmbHost
     end
 
     return if user_dir.nil?
+    print_debug "User dir => #{user_dir}"
 
-    while dent = @conn.opendir(user_dir).read
+    user_dir_path = @conn.opendir("#{path}/#{user_dir}")
+    while dent = user_dir_path.read
       next if dent.name.to_s == "." or dent.name.to_s == ".."
-      home_dir << dent.name.to_s
-      print_debug "Found: " + path + dent.name.to_s
+      home_dir << "#{path}/#{user_dir}/#{dent.name}"
+      print_debug "Found: " + "#{path}/#{user_dir}/#{dent.name}"
     end
 
     home_dir
@@ -482,26 +484,66 @@ class SmbHost
 
     return if path_is_home_dir == false
 
-    appdata = nil
-    if    path.includes? "Documents and Settings"
-      appdata = "#{path}/Application Data"
-    elsif path.includes? "Users"
-      appdata = "#{path}/AppData/Roaming"
-    end
-    return if appdata.nil?
+    ### # DEBUG !!!
+    ### begin
+    ###   profiles = @conn.opendir("#{appdata}")
+    ###   while dent = profiles.read
+    ###     print_debug "#{appdata}/#{dent.name}"
+    ###   end
+    ### rescue => e
+    ###   print_debug "#{e}"
+    ### end
 
     # Firefox !
-    while dent = @conn.opendir("#{appdata}/Mozilla/Firefox/Profiles").read
-      next if dent.name.to_s == "." or dent.name.to_s == ".."
+    begin
+      print_debug "#{path}"
+      appdata = nil
+      if    path.to_s.include? "Documents and Settings"
+        appdata = "#{path}/Application Data"
+      elsif path.to_s.include? "Users"
+        appdata = "#{path}/AppData/Roaming"
+      end
+      raise if appdata.nil?
 
-      while profile = @conn.opendir("#{dent.name.to_s}").read
-      # key3.db|signons.sqlite|bookmarks.html|places.sqlite|cookies.sqlite
-        if  dent.name.to_s == "key3.db" or
-            dent.name.to_s == "signons.sqlite"
-          print_debug "Found: " + path + dent.name.to_s
-          credz << dent.name.to_s
+      profiles = @conn.opendir("#{appdata}/Mozilla/Firefox/Profiles")
+      while dent = profiles.read
+        next if dent.name.to_s == "." or dent.name.to_s == ".."
+
+        profile = @conn.opendir("#{appdata}/Mozilla/Firefox/Profiles/#{dent.name}")
+        while ddent = profile.read
+          # key3.db|signons.sqlite|bookmarks.html|places.sqlite|cookies.sqlite
+          if  ddent.name.to_s == "key3.db" or
+              ddent.name.to_s == "signons.sqlite"
+            credz << "#{appdata}/Mozilla/Firefox/Profiles/#{dent.name}/#{ddent.name}"
+            print_info "Found: #{appdata}/Mozilla/Firefox/Profiles/#{dent.name}/#{ddent.name}"
+          end
         end
       end
+    rescue
+    end
+
+    # Chrome
+    begin
+
+      if    path.to_s.include? "Documents and Settings"
+        appdata = "#{path}/Local Settings/pplication Data"
+      elsif path.to_s.include? "Users"
+        appdata = "#{path}/AppData/Local"
+      end
+      raise if appdata.nil?
+
+      profiles = @conn.opendir("#{appdata}/Google/Chrome/User Data/Default")
+      while dent = profiles.read
+        next if dent.name.to_s == "." or dent.name.to_s == ".."
+
+        if  dent.name.to_s == "Web Data" or
+            dent.name.to_s == "Logi Data"
+          credz << "#{appdata}/Google/Chrome/User Data/Default/#{dent.name}"
+          print_info "Found: #{appdata}/Google/Chrome/User Data/Default/#{dent.name}"
+        end
+      end
+
+    rescue
     end
 
     credz
