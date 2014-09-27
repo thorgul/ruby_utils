@@ -52,7 +52,7 @@ function hideshow(id){
   SQLITE_REPORT_TRAILER = "</body>"
 
   def self.gen_pict_gallery(db, report)
-    res = db.execute( "select data from service_info where title = 'screenshot' " )
+    res = db.execute( "SELECT data FROM service_info WHERE title = 'screenshot' " )
 
     return if res.nil? or res.length == 0
 
@@ -200,6 +200,23 @@ function hideshow(id){
 
         report.write("<div class=\"boxbody\" id=\"services_#{ip[0]}\">\n")
 
+        ### screenshots = db.execute( "SELECT DISTINCT data "            +
+        ###                           "FROM service_info "               +
+        ###                           "JOIN port_info "                  +
+        ###                           "ON port_info.id=service_info.id " +
+        ###                           "WHERE ip = ? AND "                +
+        ###                           "title = 'screenshot' ", ip[0] )
+        ###
+        ### unless screenshots.nil? or screenshots.length == 0
+        ###   report.write "<center>"
+        ###   screenshots.each do |screenshot|
+        ###     report.write "<a href=\"#{screenshot[0]}\">\n"
+        ###     report.write "<img src=\"#{screenshot[0]}\" width=200 height=200 border=2 />\n"
+        ###     report.write "</a>\n"
+        ###   end
+        ###   report.write "</center>"
+        ### end
+
         report.write("        <table width=\"100%\">
                 <tr>
                         <td style=\"width:70px\" valign=\"top\" ><b>port</b></td>
@@ -209,7 +226,7 @@ function hideshow(id){
                 </tr>
         </table>\n")
 
-        services = db.execute( "select id,port,service from port_info where ip = ? order by port", ip[0] )
+        services = db.execute( "SELECT id,port,service FROM port_info WHERE ip = ? ORDER BY port", ip[0] )
         services.each do |service|
           port = service[1]
           info = service[2]
@@ -225,17 +242,26 @@ function hideshow(id){
 
           report.write("<div id=\"service_#{ip[0]}_#{port}\" style=\"display: none\">
         <table width=\"100%\">\n")
-          infos = db.execute( "select distinct title,data,source from service_info where id = ?", service[0] )
+          infos = db.execute( "SELECT DISTINCT title,data,source FROM service_info WHERE id = ?", service[0] )
           infos.each do |i|
-            source  = i[2].to_html
-            service = i[0].to_html
-            info    = i[1].to_html
+            source  = i[2]
+            service = i[0]
+            info    = i[1]
             report.write("      <tr>
         	        <td style=\"width:70px\"></td>
                         <td style=\"width:70px\" valign=\"top\">#{source}</td>
-        	        <td style=\"width:150px\" valign=\"top\">#{service}</td>
-        	        <td>#{info}</td>
-        	</tr>\n")
+        	        <td style=\"width:150px\" valign=\"top\">#{service}</td>")
+            if service == "screenshot"
+              report.write "<td>\n"
+              report.write "       <a  href=\"#{info}\">\n"
+              report.write "       <img src=\"#{info}\" width=200 height=200 border=2 />\n"
+              report.write "       </a>\n"
+              report.write "</td>"
+            else
+              report.write "<td>#{info.to_html}</td>"
+            end
+
+            report.write("     	</tr>\n")
           end
 
           report.write("        </table>
@@ -247,10 +273,11 @@ function hideshow(id){
 
       end
 
-      report.write(SQLITE_REPORT_HEADER)
-      report.close()
-
     end
+
+    report.write(SQLITE_REPORT_HEADER)
+    report.close()
+
   end
 
 end
