@@ -85,7 +85,7 @@ class Browser
 
       begin
 
-        check_page = opts[:lambda].call "#{opts[:url]}/#{line}", ["erreur 404", "erreur 403"]
+        check_page = opts[:lambda].call "#{opts[:url]}/#{line}", ["error 404", "error 403"]
 
         index.write("%04x => #{line}\n" % i)
         index.flush
