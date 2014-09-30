@@ -3,6 +3,7 @@
 require 'optparse'
 require 'sqlite3'
 require 'uri'
+require 'cgi'
 
 $debug = false
 
@@ -14,9 +15,11 @@ class String
 
   def to_html()
     str = self.strip
-    str.gsub!(/\r?\n/, "<br>\n")
+    # str.gsub!(/\r?\n/, "<br>\n")
     if str.url? or File.exists?(str)
       str = "<a href='#{str}'>#{str}</a>"
+    else
+      str = str.each_line.map {|x| CGI.escapeHTML(x.strip) + "<br>" }.join
     end
     str
   end
@@ -94,8 +97,8 @@ function hideshow(id){
         report.write("        <table width=\"100%\">
                 <tr>
                         <td style=\"width:150px\" valign=\"top\" ><a href=\"#services_#{unit[0]}\">#{unit[0]}</a></td>
-                        <td style=\"width:150px\" valign=\"top\" >#{unit[1]}</td>
-                        <td>#{unit[2]}</td>
+                        <td style=\"width:150px\" valign=\"top\" >#{unit[1]}.to_html</td>
+                        <td>#{unit[2].to_html}</td>
                 </tr>
         </table>\n")
       end
@@ -140,25 +143,38 @@ function hideshow(id){
                                         "Interesting Web Servers")
 
       # Databases
-      sqlite_report_service(db, report, "SELECT distinct ip, port, service "                      +
-                                        "FROM port_info "                                         +
-                                        "LEFT JOIN service_info "                                 +
-                                        "ON port_info.id=service_info.id "                        +
-                                        "WHERE service_info.title NOT LIKE 'http://%'  AND "      +
-                                        "      service_info.title NOT LIKE 'https://%' AND "      +
-                                        "      ( port_info.service LIKE '%sql%'     OR "          +
-                                        "        service_info.title LIKE '%sql%'    OR "          +
-                                        "        port_info.service LIKE '%access%'  OR "          +
-                                        "        service_info.title LIKE '%access%' OR "          +
-                                        "        port_info.service LIKE '%db2%'     OR "          +
-                                        "        service_info.title LIKE '%db2%' ) "              +
-                                        "ORDER BY service", "Databases")
+      sqlite_report_service(db, report, "SELECT DISTINCT ip, port, service "                         +
+                                        "FROM      port_info "                                          +
+                                        "LEFT JOIN service_info "                                       +
+                                        "ON        port_info.id=service_info.id "                       +
+                                        "WHERE (( service_info.title   NOT LIKE 'http%' AND           " +
+                                        "         service_info.title   NOT LIKE 'https%'    )     OR  " +
+                                        "        service_info.title IS NULL )                    AND  " +
+                                        "      ( port_info.service        LIKE '%sql%'             OR " +
+                                        "        service_info.title       LIKE '%sql%'             OR " +
+                                        "        ( port_info.service      LIKE '%access%'       AND "   +
+                                        "          port_info.service  NOT LIKE '%citrix access%' ) OR " +
+                                        "        ( service_info.title     LIKE '%access%'       AND "   +
+                                        "          service_info.title NOT LIKE '%citrix access%' ) OR " +
+                                        "        port_info.service        LIKE '%db2%'             OR " +
+                                        "        service_info.title       LIKE '%db2%' ) "              +
+                                        "ORDER BY service", "Databases" )
 
       # Tomcat Servers
       sqlite_report_service(db, report, "SELECT DISTINCT ip, port, data "          +
-                                        "FROM port_info JOIN service_info "        +
+                                        "FROM port_info "                          +
+                                        "JOIN service_info "        +
                                         "ON port_info.id=service_info.id "         +
                                         "WHERE service LIKE '%TOMCAT%' AND "       +
+                                        "      service_info.title = 'http-title' " +
+                                        "ORDER BY data", "Tomcat")
+
+      # JBoss Servers
+      sqlite_report_service(db, report, "SELECT DISTINCT ip, port, data "          +
+                                        "FROM port_info "                          +
+                                        "JOIN service_info "        +
+                                        "ON port_info.id=service_info.id "         +
+                                        "WHERE service LIKE '%JBOSS%' AND "        +
                                         "      service_info.title = 'http-title' " +
                                         "ORDER BY data", "Tomcat")
 
