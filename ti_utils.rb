@@ -2,6 +2,7 @@
 
 require 'debug_utils'
 require 'metasm'
+require 'uri'
 
 if RUBY_VERSION >= "1.9.0"
   ZEROBYTE = "\x00".force_encoding(Encoding::BINARY)  unless defined? ZEROBYTE
@@ -64,8 +65,27 @@ class String
 
   end
 
-  def ishex?()
+  def hex?()
     (self =~ /^[a-f0-9]+$/i)? true : false
+  end
+
+  def url?()
+    res = self =~ /\A#{URI::regexp(['http', 'https'])}\z/
+    res == nil ? false : true
+  end
+
+
+  def mac2ipv6()
+
+    macsplit = self.split(':')
+
+    macsplit.insert(3, "fe")
+    macsplit.insert(3, "ff")
+
+    macsplit[0] = (macsplit[0].to_i(16) ^ 2).to_s(16)
+    macsplit.map!{|x| x.upcase}
+    "FE80::#{macsplit[0..1].join}:#{macsplit[2..3].join}:#{macsplit[4..5].join}:#{macsplit[6..7].join}"
+
   end
 
   ###  def hexdump(opt={})
@@ -178,6 +198,28 @@ module Gul
     def self.vsnnum_to_s(vsn)
         vsn.to_s(16).gsub(/0+/, '0').each_byte.map{|x| x.chr.hex}.join('.')
     end
+  end
+
+  class ViewState
+
+    def viewstate?(str)
+
+      res = false
+      begin
+
+        res = str.base64_decode
+        res = true if str.starts_with? "\xff\x01"
+
+      rescue
+      end
+      res
+    end
+
+    # TODO :p
+    # def decode(str)
+    #   return nil unless ViewState::viewstate?(str)
+    # end
+
   end
 
   class URL
