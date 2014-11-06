@@ -163,13 +163,15 @@ class Screenshot < Generic
       # puts "https://#{ip}:#{port}"
       hostnames.each do |h|
         output = "#{opts[:output]}/screenshot_#{proto}_#{h}:#{port}.png"
+
         if opts[:resume].nil? or ( File.exist?(output) and Digest::MD5.hexdigest(File.read(output)) == "5d3a8ed3031d0c01bfeb20ef4f19dc92" )
-          print_debug "#{h}:#{port}"
+          print_debug "#{h}:#{port} (#{output})"
           command =  "CutyCapt --url=#{proto}://#{h}:#{port}/ --out=#{output} --delay=10000"
           command << " --insecure"      if proto  == "https"
           command << " 2>&1 >/dev/null" if $debug == false
           system(command)
         end
+
         insert_service_values(:id     => get_service_id(:host => ip, :port => port),
                               :source => "map_utils",
                               :title  => "screenshot",
@@ -185,7 +187,14 @@ class Screenshot < Generic
       ip   = t[1]
       port = t[2]
 
-      system("/home/gul/work/tools/web/vncsnapshot/bin/vncsnapshot -quiet #{ip}:#{port} screenshot_vnc_#{ip}:#{port}.png")
+      output = "screenshot_vnc_#{ip}:#{port}.png"
+      system("/home/gul/work/tools/web/vncsnapshot/bin/vncsnapshot -quiet #{ip}:#{port} #{output}")
+
+      insert_service_values(:id     => get_service_id(:host => ip, :port => port),
+                            :source => "map_utils",
+                            :title  => "screenshot",
+                            :data   => output)
+
     end
 
     @db.execute("END TRANSACTION")
