@@ -27,18 +27,18 @@ class Generic
 
     @db = SQLite3::Database.new( path )
 
-    @db.execute( "create table if not exists host_info (" +
-                 "id integer primary key autoincrement,"  +
-                 "ip varchar(15),"                        +
+    @db.execute( "CREATE TABLE IF NOT EXISTS host_info (" +
+                 "id INTEGER PRIMARY KEY AUTOINCREMENT,"  +
+                 "ip VARCHAR(15),"                        +
                  "title TEXT,"                            +
                  "data TEXT )" )
-    @db.execute( "create table if not exists port_info (" +
-                 "id integer primary key autoincrement,"  +
-                 "ip varchar(15),"                        +
-                 "port smallint,"                         +
+    @db.execute( "CREATE TABLE IF NOT EXISTS port_info (" +
+                 "id INTEGER PRIMARY KEY AUTOINCREMENT,"  +
+                 "ip VARCHAR(15),"                        +
+                 "port SMALLINT,"                         +
                  "service TEXT )" )
-    @db.execute( "create table if not exists service_info (" +
-                 "id integer,"                               +
+    @db.execute( "CREATE TABLE IF NOT EXISTS service_info (" +
+                 "id INTEGER,"                               +
                  "source TEXT,"                              +
                  "title TEXT,"                               +
                  "data TEXT )" )
@@ -49,7 +49,7 @@ class Generic
 
     false if values.nil?
 
-    preped = @db.prepare( "insert into host_info select NULL, ?, ?, ? where not exists(select 1 from host_info where ip = ? and title = ? and data = ?)" )
+    preped = @db.prepare( "INSERT INTO host_info SELECT NULL, ?, ?, ? WHERE NOT EXISTS(SELECT 1 FROM host_info WHERE ip = ? AND title = ? AND data = ?)" )
 
     values.each_pair {|k,v| values[k] = v.strip if v.class == String }
     preped.bind_params( values[:ip],
@@ -68,7 +68,7 @@ class Generic
     false if values.nil?
 
     values.each_pair {|k,v| values[k] = v.strip if v.class == String }
-    preped = @db.prepare( "insert into port_info select NULL, ?, ?, ? where not exists(select 1 from port_info where ip = ? and port = ? and service = ?)" )
+    preped = @db.prepare( "INSERT INTO port_info SELECT NULL, ?, ?, ? WHERE NOT EXISTS(SELECT 1 FROM port_info WHERE ip = ? AND port = ? AND service = ?)" )
     preped.bind_params( values[:host],
                         values[:port],
                         values[:service],
@@ -85,7 +85,7 @@ class Generic
     false if values.nil?
 
     values.each_pair {|k,v| values[k] = v.strip if v.class == String }
-    preped = @db.prepare( "insert into service_info select ?, ?, ?, ? where not exists(select 1 from service_info where id = ? and source = ? and title = ? and data = ?)" )
+    preped = @db.prepare( "INSERT INTO service_info SELECT ?, ?, ?, ? WHERE NOT EXISTS(SELECT 1 FROM service_info WHERE id = ? AND source = ? AND title = ? AND data = ?)" )
     preped.bind_params( values[:id],
                         values[:source],
                         values[:title],
@@ -104,7 +104,7 @@ class Generic
 
     return nil if values.nil?
 
-    id = @db.get_first_value( "select id from port_info where ip = ? and port = ?",
+    id = @db.get_first_value( "SELECT id FROM port_info WHERE ip = ? AND port = ?",
                              values[:host],
                              values[:port])
 
