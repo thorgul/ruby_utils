@@ -118,10 +118,49 @@ class Nikto < Generic
       (hostnames.nil? && hostnames = [ ip ]) || hostnames << ip
 
       hostnames.each do |h|
-        print_debug "#{h}:#{port}"
+        unless opts[:scope].nil?
+          next unless opts[:scope].include? h
+        end
+
         cmd = "nikto -Format xml -o #{opts[:output]}nikto_#{h}:#{port}.xml -host #{h} -port #{port}"
         cmd << " -ssl" if ssl_service?(id)
-        print_info cmd
+        puts cmd
+      end
+
+    end
+
+    @db.execute("END TRANSACTION")
+
+  end
+
+end
+
+
+class Patator < Generic
+
+  def parse(opts)
+
+    @db.execute("BEGIN TRANSACTION")
+
+    # HTTP/HTTPS
+    @prep[:get_http_services].execute!.each do |t|
+
+      id    = t[0]
+      ip    = t[1]
+      port  = t[2]
+      proto = "http"
+      proto = "https" if self.ssl_service?(id)
+
+      hostnames = @prep[:get_ip_hostnames].execute!(ip).flatten!
+      (hostnames.nil? && hostnames = [ ip ]) || hostnames << ip
+
+      hostnames.each do |h|
+        unless opts[:scope].nil?
+          next unless opts[:scope].include? h
+        end
+
+        cmd = "for dico in ~/work/tools/dictionaries/dico_wfuzz_sorted/* ; do l0g patator http_fuzz url=#{proto}://#{h}:#{port}/FILE0 0=$dico -x ignore:code=404 ; done"
+        puts cmd
       end
 
     end
@@ -145,9 +184,12 @@ class SslScan < Generic
       ip   = t[1]
       port = t[2]
 
-      print_debug "#{ip}:#{port}"
+      unless opts[:scope].nil?
+        next unless opts[:scope].include? ip
+      end
+
       cmd = "sslscan --xml=#{opts[:output]}sslscan_#{ip}:#{port}.xml #{ip}:#{port}"
-      print_info cmd
+      puts cmd
 
     end
 
@@ -180,6 +222,8 @@ if $0 == __FILE__
     case a.downcase
     when "nikto"
       options[:actions] << Gul::Helper::Nikto
+    when "patator"
+      options[:actions] << Gul::Helper::Patator
     when "sslscan"
       options[:actions] << Gul::Helper::SslScan
     else
@@ -189,11 +233,28 @@ if $0 == __FILE__
     end
   end
 
+  opts.on("-s", "--scope SCOPE", "A scope file") do |s|
+    options[:scope] = [] if options[:scope].nil?
+
+    fd = File.open(s)
+    fd.each_line do |line|
+      options[:scope] << line.strip
+    end
+    fd.close
+
+  end
+
   opts.on("-d", "--debug") do
     $debug = true
   end
 
   opts.parse!
+
+  if options[:actions].length == 0
+    options[:actions] << Gul::Helper::Nikto
+    options[:actions] << Gul::Helper::Patator
+    options[:actions] << Gul::Helper::SslScan
+  end
 
   ARGV.each do |sqlfile|
     puts "Processing #{sqlfile}"
