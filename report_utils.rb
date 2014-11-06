@@ -54,8 +54,46 @@ function hideshow(id){
 </script>"
   SQLITE_REPORT_TRAILER = "</body>"
 
+
+  def self.service_match?(db, id, name)
+
+    service_match = db.prepare( "SELECT service " +
+                                "FROM port_info " +
+                                "WHERE id = ? "   +
+                                "AND service like ?" )
+
+    service_title = service_match.execute!( id, name )
+
+    service_title.each do |st|
+      return true if st.include?(name)
+    end
+
+    false
+  end
+
+  def self.ssl_service?(db, id)
+
+    ssl_service = db.prepare( "SELECT title "      +
+                              "FROM service_info " +
+                              "WHERE id = ? "      +
+                              "AND title LIKE '%ssl%'" )
+
+    ssl_info = ssl_service.execute!( id )
+
+    # puts "ssl_info => #{ssl_info} / #{ssl_info.length}"
+    return true if ssl_info.length >= 1
+
+    service_match?(db, id, "https")
+
+  end
+
+
   def self.gen_pict_gallery(db, report)
-    res = db.execute( "SELECT data FROM service_info WHERE title = 'screenshot' " )
+    res = db.execute( "SELECT DISTINCT port_info.id, ip, port, data "  +
+                      "FROM port_info "                  +
+                      "LEFT JOIN service_info  "         +
+                      "ON port_info.id=service_info.id " +
+                      "WHERE title = 'screenshot'" )
 
     return if res.nil? or res.length == 0
 
@@ -67,8 +105,15 @@ function hideshow(id){
     report.write("<div class=\"boxbody\" id=\"Screenshots\">\n")
 
     res.each do |unit|
-      report.write "<a href=\"#{unit[0]}\">\n"
-      report.write "<img src=\"#{unit[0]}\" width=400 height=400 border=2 />\n"
+      id   = unit[0]
+      ip   = unit[1]
+      port = unit[2]
+      data = unit[3]
+      proto = "http"
+      proto = "https" if ssl_service?(db, id)
+
+      report.write "<a href=\"#{proto}://#{ip}:#{port}\">\n"
+      report.write "<img src=\"#{data}\" width=400 height=400 border=2 />\n"
       report.write "</a>\n"
     end
     report.write("</div>\n")
@@ -97,8 +142,8 @@ function hideshow(id){
         report.write("        <table width=\"100%\">
                 <tr>
                         <td style=\"width:150px\" valign=\"top\" ><a href=\"#services_#{unit[0]}\">#{unit[0]}</a></td>
-                        <td style=\"width:150px\" valign=\"top\" >#{unit[1]}.to_html</td>
-                        <td>#{unit[2].to_html}</td>
+                        <td style=\"width:150px\" valign=\"top\" >#{unit[1].to_s.to_html}</td>
+                        <td>#{unit[2].to_s.to_html}</td>
                 </tr>
         </table>\n")
       end
@@ -188,6 +233,16 @@ function hideshow(id){
                                         "ORDER BY data, ip, port", "VNC")
 
 
+      # HTTP Proxies
+      sqlite_report_service(db, report, "SELECT DISTINCT ip, port, data "               +
+                                        "FROM port_info "                               +
+                                        "JOIN service_info "                            +
+                                        "ON port_info.id=service_info.id "              +
+                                        "WHERE service LIKE '%http-proxy%'        AND " +
+                                        "      service_info.title != 'http-title' AND " +
+                                        "      service_info.title != 'screenshot' " +
+                                        "ORDER BY data, ip, port", "HTTP Proxies")
+
       # Report for each server
       ips = db.execute( "select distinct ip from port_info" )
       ips.sort_by! {|ip| ip[0].to_s.split('.').map{ |octet| octet.to_i} }
@@ -266,7 +321,7 @@ function hideshow(id){
             report.write("      <tr>
         	        <td style=\"width:70px\"></td>
                         <td style=\"width:70px\" valign=\"top\">#{source}</td>
-        	        <td style=\"width:150px\" valign=\"top\">#{service}</td>")
+        	        <td style=\"width:150px\" valign=\"top\">#{service.to_html}</td>")
             if service == "screenshot"
               report.write "<td>\n"
               report.write "       <a  href=\"#{info}\">\n"
