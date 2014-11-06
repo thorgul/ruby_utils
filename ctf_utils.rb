@@ -26,7 +26,7 @@ class String
 
   def is_base64?()
     if self.base64_decode.length == 0 or
-        self.downcase.delete("a-z0-9/=").length > 0
+        self.downcase.delete("a-z0-9\+/=").length > 0
       return false
     end
     true
@@ -53,7 +53,7 @@ module CTF
     elsif str.is_base64?
       res = str.base64_decode
     elsif str.is_uri_encoded?
-      res = URI.decode str
+      res = CGI.unescape str
     elsif str.start_with? "\xff\x01"
       puts "That shit is a ViewState"
     end
