@@ -368,7 +368,7 @@ if $0 == __FILE__
     options[:output] = o
   end
 
-  opts.on("--filter-local", "Remove local IP from the list of parsed files") do
+  opts.on("--internals-only", "Only keep internal network IP addresses to generate the report") do
     options[:filter] = Proc.new do |x|
       res = false
       res = true if x.match(/^(10|127|192\.168)\./)
