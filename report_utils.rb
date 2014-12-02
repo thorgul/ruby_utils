@@ -197,10 +197,13 @@ function hideshow(id){
                                         "        service_info.title IS NULL )                    AND  " +
                                         "      ( port_info.service        LIKE '%sql%'             OR " +
                                         "        service_info.title       LIKE '%sql%'             OR " +
-                                        "        ( port_info.service      LIKE '%access%'       AND "   +
-                                        "          port_info.service  NOT LIKE '%citrix access%' ) OR " +
-                                        "        ( service_info.title     LIKE '%access%'       AND "   +
-                                        "          service_info.title NOT LIKE '%citrix access%' ) OR " +
+                                        "        ( port_info.service      LIKE '%access%'        AND  " +
+                                        "          port_info.service  NOT LIKE '%citrix access%' AND  " +
+                                        "          port_info.service  NOT LIKE '%access%denied%' ) OR " +
+                                        "        ( service_info.title     LIKE '%access%'        AND "  +
+                                        "          service_info.title NOT LIKE '%citrix access%' AND "  +
+                                        "          service_info.title NOT LIKE '%x11%access%'    ) OR " +
+                                        "        port_info.service        LIKE '%oracle-tns%'      OR " +
                                         "        port_info.service        LIKE '%db2%'             OR " +
                                         "        service_info.title       LIKE '%db2%' ) "              +
                                         "ORDER BY service", "Databases" )
