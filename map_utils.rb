@@ -367,7 +367,7 @@ class SmbHost
 
   @@IMPORTANT_REGEX_PATH = [
                             /(Documents and Settings|Users)\/.*?\/Desktop\//i,
-                            /(Documents and Settings\/.*?\/Application Data|Users\/.*?\/AppData\/Roaming)\/Mozilla\/Firefox\/Profiles\/(key3.db|signons.sqlite|bookmarks.html|places.sqlite|cookies.sqlite)/i,
+                            /(Documents and Settings\/.*?\/Application Data|Users\/.*?\/AppData\/Roaming)\/Mozilla\/Firefox\/Profiles\/(cert8.db|key3.db|signons.sqlite|bookmarks.html|places.sqlite|cookies.sqlite)/i,
                             /Windows\/NTDS\/ntds.dit/i,
                             /eftops.*\/.*?debug.*?\.(log|zip|bak|backup|xml|conf)/i
                            ]
