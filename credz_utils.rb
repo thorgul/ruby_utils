@@ -173,19 +173,52 @@ class FileZilla < Default
   def parse(input, type)
     return unless type == :file
 
-    # Works only for sitemanager.xml
-    f = File.open( input )
-    xml = Nokogiri::XML( f )
+    case File.basename(input)
 
-    servers = xml.xpath("//FileZilla3/Servers/Server")
-    servers.each do |server|
+    when "sitemanager.xml"
+      f = File.open( input )
+      xml = Nokogiri::XML( f )
 
-      host = server.xpath("Host").text
-      port = server.xpath("Port").text
-      user = server.xpath("User").text
-      pass = server.xpath("Pass").text
+      servers = xml.xpath("//FileZilla3/Servers/Server")
+      servers.each do |server|
 
-      print_info "#{host}:#{port} => #{user} - #{pass}"
+        host = server.xpath("Host").text
+        port = server.xpath("Port").text
+        user = server.xpath("User").text
+        pass = server.xpath("Pass").text
+
+        print_info "#{host}:#{port} => #{user} - #{pass}"
+
+      end
+      f.close
+
+    when "filezilla.xml"
+      f = File.open( input )
+      xml = Nokogiri::XML( f )
+
+      host = xml.xpath("//FileZilla3/Settings/Setting[@name='FTP Proxy host']")[0].text
+      user = xml.xpath("//FileZilla3/Settings/Setting[@name='FTP Proxy user']")[0].text
+      pass = xml.xpath("//FileZilla3/Settings/Setting[@name='FTP Proxy password']")[0].text
+
+      unless ( host.nil? or host.length == 0 ) and
+             ( user.nil? or user.length == 0 ) and
+             ( pass.nil? or pass.length == 0 )
+        print_info "#{host} => #{user} - #{pass}"
+      end
+
+      host = xml.xpath("//FileZilla3/Settings/Setting[@name='Proxy host']")[0].text
+      port = xml.xpath("//FileZilla3/Settings/Setting[@name='Proxy port']")[0].text
+      user = xml.xpath("//FileZilla3/Settings/Setting[@name='Proxy user']")[0].text
+      pass = xml.xpath("//FileZilla3/Settings/Setting[@name='Proxy password']")[0].text
+
+      unless ( host.nil? or host.length == 0 ) and
+             ( port.nil? or port.length == 0 or port == "0" ) and
+             ( user.nil? or user.length == 0 ) and
+             ( pass.nil? or pass.length == 0 )
+        print_info "#{host}:#{port} => #{user} - #{pass}"
+      end
+
+      f.close
 
     end
 
