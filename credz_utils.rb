@@ -6,6 +6,7 @@ require 'sqlite3'
 require 'optparse'
 require 'ffi'
 require 'json'
+require 'nokogiri'
 
 $debug = false
 
@@ -13,92 +14,6 @@ $debug = false
 
 
 module Credentials
-
-## # PK11SlotInfo
-##     /* the PKCS11 function list for this slot */
-##     void *functionList;
-##     SECMODModule *module; /* our parent module */
-##     /* Boolean to indicate the current state of this slot */
-##     PRBool needTest;	/* Has this slot been tested for Export complience */
-##     PRBool isPerm;	/* is this slot a permanment device */
-##     PRBool isHW;	/* is this slot a hardware device */
-##     PRBool isInternal;  /* is this slot one of our internal PKCS #11 devices */
-##     PRBool disabled;	/* is this slot disabled... */
-##     PK11DisableReasons reason; 	/* Why this slot is disabled */
-##     PRBool readOnly;	/* is the token in this slot read-only */
-##     PRBool needLogin;	/* does the token of the type that needs 
-## 			 * authentication (still true even if token is logged 
-## 			 * in) */
-##     PRBool hasRandom;   /* can this token generated random numbers */
-##     PRBool defRWSession; /* is the default session RW (we open our default 
-## 			  * session rw if the token can only handle one session
-## 			  * at a time. */
-##     PRBool isThreadSafe; /* copied from the module */
-##     /* The actual flags (many of which are distilled into the above PRBools) */
-##     CK_FLAGS flags;      /* flags from PKCS #11 token Info */
-##     /* a default session handle to do quick and dirty functions */
-##     CK_SESSION_HANDLE session; 
-##     PZLock *sessionLock; /* lock for this session */
-##     /* our ID */
-##     CK_SLOT_ID slotID;
-##     /* persistant flags saved from startup to startup */
-##     unsigned long defaultFlags;
-##     /* keep track of who is using us so we don't accidently get freed while
-##      * still in use */
-##     PRInt32 refCount;    /* to be in/decremented by atomic calls ONLY! */
-##     PZLock *freeListLock;
-##     PK11SymKey *freeSymKeysWithSessionHead;
-##     PK11SymKey *freeSymKeysHead;
-##     int keyCount;
-##     int maxKeyCount;
-##     /* Password control functions for this slot. many of these are only
-##      * active if the appropriate flag is on in defaultFlags */
-##     int askpw;		/* what our password options are */
-##     int timeout;	/* If we're ask_timeout, what is our timeout time is 
-## 			 * seconds */
-##     int authTransact;   /* allow multiple authentications off one password if
-## 		         * they are all part of the same transaction */
-##     PRTime authTime;	/* when were we last authenticated */
-##     int minPassword;	/* smallest legal password */
-##     int maxPassword;	/* largest legal password */
-##     PRUint16 series;	/* break up the slot info into various groups of
-## 			 * inserted tokens so that keys and certs can be
-## 			 * invalidated */
-##     PRUint16 flagSeries;/* record the last series for the last event
-##                          * returned for this slot */
-##     PRBool flagState;	/* record the state of the last event returned for this
-## 			 * slot. */
-##     PRUint16 wrapKey;	/* current wrapping key for SSL master secrets */
-##     CK_MECHANISM_TYPE wrapMechanism;
-## 			/* current wrapping mechanism for current wrapKey */
-##     CK_OBJECT_HANDLE refKeys[1]; /* array of existing wrapping keys for */
-##     CK_MECHANISM_TYPE *mechanismList; /* list of mechanism supported by this
-## 				       * token */
-##     int mechanismCount;
-##     /* cache the certificates stored on the token of this slot */
-##     CERTCertificate **cert_array;
-##     int array_size;
-##     int cert_count;
-##     char serial[16];
-##     /* since these are odd sizes, keep them last. They are odd sizes to 
-##      * allow them to become null terminated strings */
-##     char slot_name[65];
-##     char token_name[33];
-##     PRBool hasRootCerts;
-##     PRBool hasRootTrust;
-##     PRBool hasRSAInfo;
-##     CK_FLAGS RSAInfoFlags;
-##     PRBool protectedAuthPath;
-##     PRBool isActiveCard;
-##     PRIntervalTime lastLoginCheck;
-##     unsigned int lastState;
-##     /* for Stan */
-##     NSSToken *nssToken;
-##     /* fast mechanism lookup */
-##     char mechanismBits[256];
-## };
-
-
 
 module NSS
   extend FFI::Library
@@ -180,7 +95,7 @@ class UVNC < Default
 end
 
 # Good read => http://www.infond.fr/2010/04/firefox-passwords-management-leaks.html
-class Firefox
+class Firefox < Default
 
   def decrypt(source, hostname, encryptedUsername, encryptedPassword)
 
@@ -253,6 +168,31 @@ class Firefox
 
 end
 
+class FileZilla < Default
+
+  def parse(input, type)
+    return unless type == :file
+
+    # Works only for sitemanager.xml
+    f = File.open( input )
+    xml = Nokogiri::XML( f )
+
+    servers = xml.xpath("//FileZilla3/Servers/Server")
+    servers.each do |server|
+
+      host = server.xpath("Host").text
+      port = server.xpath("Port").text
+      user = server.xpath("User").text
+      pass = server.xpath("Pass").text
+
+      print_info "#{host}:#{port} => #{user} - #{pass}"
+
+    end
+
+  end
+
+end
+
 end
 
 end
@@ -276,6 +216,8 @@ if $0 == __FILE__
       options[:format] = Credentials::Decrypt::Firefox
     when "firefox"
       options[:format] = Credentials::Decrypt::Firefox
+    when "filezilla"
+      options[:format] = Credentials::Decrypt::FileZilla
     else
       print_error "Unknown format #{f}"
       puts opts.banner
