@@ -583,14 +583,13 @@ class SmbHost
       end
       raise if appdata.nil?
 
-      profiles = @conn.opendir("#{appdata}")
-      while dent = profiles.read
-        next if dent.name.to_s == "." or dent.name.to_s == ".."
+      profile = @conn.opendir("#{appdata}")
+      while dent = profile.read
+        next unless dent.name.to_s == "WinSCP.ini"
 
-        if  dent.name.to_s == "WinSCP.ini"
-          credz << "#{appdata}/#{dent.name}"
-          print_info "Found: #{appdata}/#{dent.name}"
-        end
+        credz << "#{appdata}/#{dent.name}"
+        print_info "Found: #{appdata}/#{dent.name}"
+
       end
 
     rescue
@@ -606,7 +605,16 @@ class SmbHost
       end
       raise if appdata.nil?
 
-      ##     Roaming\FileZilla
+
+      profile = @conn.opendir("#{appdata}")
+      while dent = profile.read
+        next unless dent.name.to_s == "sitemanager.xml" or
+                    dent.name.to_s == "filezilla.xml"
+
+        credz << "#{appdata}/#{dent.name}"
+        print_info "Found: #{appdata}/#{dent.name}"
+
+      end
 
     rescue
     end
