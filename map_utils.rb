@@ -251,13 +251,13 @@ class Smb < Generic
             unless s.downcase == "admin$" or
                 s.downcase == "ipc$" or
                 s.downcase == "print$"
-              print_info "Share found: #{ip}/#{s}"
+              print_info "Share found: - #{id} - #{ip}/#{s}"
               insert_service_values({
                                       :id     => id,
                                       :source => "netbios-map",
                                       :title  => "netbios-share",
                                       :data   => s,
-                                    }) unless id.nil?
+                                    })
             end
           end
         end
@@ -277,11 +277,15 @@ class Smb < Generic
       targets = @prep[:get_smb_shares].execute!
     else
       targets = opts[:targets].map do |t|
-        ip, share = t.split("/")
+        s = t.split("/")
+        ip = s[0]
+        share = s[1..-1].join("/")
         id = get_service_id(:host => ip, :port => 445, :create => false)
         (id.nil? && nil) || [ id, ip, share ]
       end
     end
+
+    print_debug targets
 
     if opts[:resume]
       rindex = 0
@@ -317,7 +321,13 @@ class Smb < Generic
           # puts "#{ifiles.length}"
         end
 
-        users_home = smbhost.get_users_home_dir("smb://#{ip}/#{share}/")
+        if share.downcase == "users" or
+           share.downcase == "documents and settings"
+          users_home = smbhost.get_users_home_dir("smb://#{ip}/")
+        else
+          users_home = smbhost.get_users_home_dir("smb://#{ip}/#{share}/")
+        end
+
         unless users_home.nil?
 
           users_home.each do |home|
@@ -619,6 +629,18 @@ class SmbHost
     rescue
     end
 
+    begin
+
+      # Program Files\FileZilla Server
+      if path.to_s.include? "Program Files" or path.to_s.include? "Program Files (x86)"
+        appdata = "#{path}/FileZilla Server"
+
+        credz << "#{appdata}/FileZilla\ Server.xml"
+      end
+
+    rescue
+    end
+
     credz
   end
 
@@ -666,7 +688,6 @@ if $0 == __FILE__
     options[:workgroup]   = domain
   end
 
-
   opts.on("-a", "--action ACTION", "The action you want to perform (default: all)") do |a|
     case a.downcase
     when "screenshot"
@@ -682,6 +703,9 @@ if $0 == __FILE__
 
   opts.on("-d", "--debug") do
     $debug = true
+    # print_debug "Username  #{options[:username]}"
+    # print_debug "Password  #{options[:password]}"
+    # print_debug "Workgroup #{options[:workgroup]}"
   end
 
   opts.parse!
