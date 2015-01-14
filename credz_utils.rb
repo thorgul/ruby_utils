@@ -120,7 +120,11 @@ class Firefox < Default
 
     username = dec_username[:data].read_string()[0..dec_username[:len] -1]
     password = dec_password[:data].read_string()[0..dec_password[:len] -1]
-    print_info "#{source} => #{hostname} -- #{username} -- #{password}"
+    if $debug
+      print_info "#{source} => #{hostname} -- #{username} -- #{password}"
+    else
+      print_info "#{hostname} -- #{username} -- #{password}"
+    end
 
   end
 
@@ -143,12 +147,15 @@ class Firefox < Default
 
       print_debug "#{input}/signons.sqlite exists"
       db = SQLite3::Database.new( db_path )
-      ff_credz = db.execute("SELECT hostname, encryptedUsername, encryptedPassword FROM moz_logins")
+      ff_credz = db.execute("SELECT hostname, encryptedUsername, encryptedPassword FROM moz_logins ORDER BY hostname")
       ff_credz.each do |hostname, encryptedUsername, encryptedPassword|
         self.decrypt(db_path, hostname, encryptedUsername, encryptedPassword)
       end
       db.close
 
+    else
+      print_debug "#{input}/signons.sqlite does not exists"
+      return
     end
 
     db_path = "#{input}/logins.json"
@@ -158,7 +165,7 @@ class Firefox < Default
       db = File.open( db_path )
       json = JSON.parse( db.read )
 
-      json["logins"].each do |login|
+      json["logins"].sort{|a,b| a["hostname"] <=> b["hostname"]}.each do |login|
         self.decrypt(db_path, login["hostname"], login["encryptedUsername"], login["encryptedPassword"])
       end
 
@@ -170,8 +177,33 @@ end
 
 class FileZilla < Default
 
+  @@files = [ "sitemanager.xml", "filezilla.xml" ]
+
   def parse(input, type)
-    return unless type == :file
+
+    case type
+
+    when :file
+      parse_file(input)
+    when :dir
+      parse_dir(input)
+    else
+      print_error "Filezilla - #{input} type (#{type}) is not supported"
+    end
+
+  end
+
+  def parse_dir(input)
+
+    @@files.each do |f|
+      parse_file("#{input}/#{f}")
+    end
+
+  end
+
+  def parse_file(input)
+
+    return File.exist?(input)
 
     case File.basename(input)
 
@@ -289,7 +321,7 @@ if $0 == __FILE__
 
   parser = options[:format].new()
   options[:input].each do |input|
-    puts "Processing #{input}"
+    puts "Processing #{input}" if $debug
     parser.parse(input, options[:type])
   end
 
