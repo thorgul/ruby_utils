@@ -490,7 +490,3 @@ class VNC
 end
 
 end
-
-if $0 == __FILE__
-  ARGV.each { |arg| pass = arg.strip ; puts Password::Cisco.decrypt(pass) + ": (#{pass})" }
-end
