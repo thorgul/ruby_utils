@@ -113,7 +113,7 @@ function hideshow(id){
       proto = "https" if ssl_service?(db, id)
 
       report.write "<a href=\"#{proto}://#{ip}:#{port}\">\n"
-      report.write "<img src=\"#{data}\" width=400 height=400 border=2 />\n"
+      report.write "<img src=\"#{data}\" width=200 height=200 border=2 />\n"
       report.write "</a>\n"
     end
     report.write("</div>\n")
