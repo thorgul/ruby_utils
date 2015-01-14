@@ -1,5 +1,8 @@
 #!/usr/bin/env ruby
 #
+# Need to scrap ideas from:
+# - http://cutycapt.sourceforge.net/
+# - https://github.com/paulhammond/webkit2png/
 
 require 'Qt'
 require 'qtwebkit'
