@@ -444,6 +444,28 @@ class SslScan < Generic
       end
     end
 
+    subjects = @xml.xpath("//document/ssltest/certificate/subject")
+    subjects.each do |subject|
+
+      subject.text.split('/').each do |item|
+        key, value = item.split('=')
+        if key == "CN" and not value.start_with? "*"
+          insert_host_values(:ip    => s_host,
+                             :title => "hostname:PTR",
+                             :data  => value)
+        end
+      end
+
+      #
+      #
+      #
+      #
+      #
+      #
+      #
+
+    end
+
     @db.execute("END TRANSACTION")
   end
 
@@ -464,7 +486,7 @@ if $0 == __FILE__
     options[:output] = o
   end
 
-  opts.on("-t", "--type TYPE", "The xml files type (nikto|nmap|ettercap|p0f)") do |t|
+  opts.on("-t", "--type TYPE", "The xml files type (nikto|nmap|ettercap|p0f|sslscan)") do |t|
     if    t.downcase == "nmap"
       options[:type] = Gul::Scan::Nmap
     elsif t.downcase == "nikto"
