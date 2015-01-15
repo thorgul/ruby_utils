@@ -49,3 +49,13 @@ So whiners are gonna whine while I have some wine
 ```
 $ map_utils.rb -a smb my_awesome_scan_results.sqlite
 ```
+
+
+***credz for free ? SRSLY ?
+
+Find shit, collect shit, then (if firefox shit):
+```
+$ credz_utils.rb -i ./Profiles/blahblahblag.default-6969696969 -t dir -f firefox
+[-] http://pwnd.wesite.pwnd -- user -- password
+...
+```
