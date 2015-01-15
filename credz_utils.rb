@@ -203,7 +203,7 @@ class FileZilla < Default
 
   def parse_file(input)
 
-    return File.exist?(input)
+    return unless File.exist?("#{input}")
 
     case File.basename(input)
 
