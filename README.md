@@ -51,7 +51,7 @@ $ map_utils.rb -a smb my_awesome_scan_results.sqlite
 ```
 
 
-***credz for free ? SRSLY ?
+***Credz for free ? SRSLY ?***
 
 Find shit, collect shit, then (if firefox shit):
 ```
