@@ -8,7 +8,7 @@ module Cisco
 
 module Password7
 
-$xlat=[
+@@xlat=[
 	0x64, 0x73, 0x66, 0x64, 0x3b, 0x6b, 0x66, 0x6f,
 	0x41, 0x2c, 0x2e, 0x69, 0x79, 0x65, 0x77, 0x72,
 	0x6b, 0x6c, 0x64, 0x4a, 0x4b, 0x44, 0x48, 0x53,
@@ -22,7 +22,7 @@ $xlat=[
     seed=rand(16)
     password=password[0, 11]
 
-    hash=(0 .. (password.length-1)).collect { |i| $xlat[(seed+i)%$xlat.length] ^ password[i] }
+    hash=(0 .. (password.length-1)).collect { |i| @@xlat[(seed+i) % @@xlat.length] ^ password[i] }
 
     return format("%02d", seed) + hash.collect { |e| format("%02x", e) }.join("")
   end
@@ -31,7 +31,7 @@ $xlat=[
     seed=hash[0, 2].to_i
     hash=hash[2, hash.length-1]
     pairs=(0 .. (hash.length/2-1)).collect { |i| hash[i*2, 2].to_i(16) }
-    decrypted=(0 .. (pairs.length-1)).collect { |i| $xlat[(seed+i)%$xlat.length] ^ pairs[i] }
+    decrypted=(0 .. (pairs.length-1)).collect { |i| @@xlat[(seed+i) % @@xlat.length] ^ pairs[i] }
 
     return (decrypted.collect { |e| e.chr }).join("")
   end
@@ -47,8 +47,30 @@ module WLC
     aes = OpenSSL::Cipher::Cipher.new("AES-128-CBC")
     aes.decrypt
     aes.key = "834156F9940F09C0A8D00F019F850005".unhex
-    aes.iv = iv.unhex
+    aes.iv  = iv.unhex
     aes.update(hash.unhex) + aes.final
+
+  end
+
+end
+
+module ACS
+
+  # ripped from nico's script http://www.openwall.com/lists/john-users/2014/12/08/1
+  def self.decrypt(enc)
+
+    des = OpenSSL::Cipher::Cipher.new('DES-EDE3-CBC')
+    des.decrypt
+    des.key = "7304912f3d62b5efcd837373bf6b7ff4f1f438b6b67008ef".unhex
+    des.iv  = "0a0a0a0a0a0a0a0a".unhex
+    des.padding = 0
+
+    # libCARSReposMgr.so 3DES padding handling is wrong...
+    # we try to mimick the behavior here.
+    enc += "00" * ( 8 - ( (enc.length / 2) & 7 ) )
+
+    decrypted_passwd = des.update(enc.unhex) + des.final
+    decrypted_passwd.gsub(/\x00.*/, '')
 
   end
 
