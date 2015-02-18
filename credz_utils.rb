@@ -51,25 +51,49 @@ module NSS
   end
 
   attach_function :NSS_Init, [ :string ], :int
+  attach_function :NSS_Shutdown, [ ], :secStatus
   attach_function :PK11_GetInternalKeySlot, [ ], :pointer
   attach_function :PK11_CheckUserPassword, [ :pointer , :string ], :secStatus
   attach_function :PK11_Authenticate, [ :pointer, :int, :pointer ], :int
   attach_function :PK11SDR_Decrypt, [ :pointer, :pointer, :pointer ], :int
+  attach_function :PK11_FreeSlot, [:pointer ], :int
 end
 
 module Decrypt
 
 class Default
 
+  def initialize()
+    @files = []
+  end
+
   def parse(input, type)
-    if type == :file
+
+    case type
+    when :file
       parse_file(input)
-    elsif type == :string
+    when :dir
+      parse_dir(input)
+    when :directory
+      parse_dir(input)
+    when :string
       parse_string(input)
     end
   end
 
+  def parse_dir(input)
+
+    Dir.entries(input).each do |f|
+      parse_file("#{input}/#{f}") if @files.include? f.downcase
+    end
+
+  end
+
   def parse_file(input)
+
+    return unless File.exists? input
+    return unless @files.include? File.basename(input).downcase
+
   end
 
   def parse_string(input)
@@ -77,7 +101,115 @@ class Default
 
 end
 
+
+# Stolen from Ryan Fucking Lynn code
+class WinSCP < Default
+
+  def initialize()
+
+    @files = [ "winscp.ini" ]
+
+    @flag   = 0xFF
+    @magic  = 0xA3
+    @string = "0123456789ABCDEF"
+
+  end
+
+
+  def decrypt_next_char(pass)
+
+    if pass.length > 0
+
+      unpack1 = @string.index(pass[0,1])
+      unpack1 = unpack1 << 4
+
+      unpack2 = @string.index(pass[1,1])
+      result= ~((unpack1+unpack2) ^ @magic) & 0xff
+      pass = pass[2,pass.length]
+      return [ result, pass ]
+    end
+  end
+
+  def decrypt_password(user, pass, host)
+
+    key = user + host
+    flag, pass = decrypt_next_char(pass)
+
+    if flag == @flag
+      r, pass = decrypt_next_char(pass);
+      length, pass = decrypt_next_char(pass);
+    else
+      length = flag;
+    end
+
+    ldel, pass = decrypt_next_char(pass) ;
+    ldel = ldel * 2
+
+    pass = pass[ ldel , pass.length ];
+    result = "";
+
+    for ss in 0...length
+      r, pass = decrypt_next_char(pass)
+      result += r.chr
+    end
+
+    if flag == @flag
+      result = result[key.length,result.length];
+    end
+
+    return result
+  end
+
+  def parse_file(input)
+
+    super
+    credz = {
+      :user => nil,
+      :pass => nil,
+      :host => nil
+    }
+
+    f = open(input, 'r')
+    f.readlines.each do |line|
+
+      line.strip!
+      case line.downcase.split("=")[0]
+      when "hostname"
+        credz[:host] = line.split("=", 2)[1]
+      when "username"
+        credz[:user] = line.split("=", 2)[1]
+      when "password"
+        credz[:pass] = line.split("=", 2)[1]
+      end
+
+      if not credz[:user].nil?  and
+          not credz[:pass].nil? and
+          not credz[:host].nil?
+        res = decrypt_password(credz[:user],
+                               credz[:pass],
+                               credz[:host])
+        print_info "#{credz[:user]}@#{credz[:host]} => #{res} (#{input})"
+        credz[:user] = nil
+        credz[:pass] = nil
+        credz[:host] = nil
+      end
+
+    end
+
+  end
+
+  def parse_dir(input)
+    super
+  end
+
+end
+
+
 class UVNC < Default
+
+  def initialize()
+    @files = [ "ultravnc.ini" ]
+  end
 
   def parse_file(input)
     f = open(input, 'r')
@@ -96,6 +228,10 @@ end
 
 # Good read => http://www.infond.fr/2010/04/firefox-passwords-management-leaks.html
 class Firefox < Default
+
+  def initialize()
+    @files = [ "logins.json", "signons.sqlite" ]
+  end
 
   def decrypt(source, hostname, encryptedUsername, encryptedPassword)
 
@@ -128,13 +264,20 @@ class Firefox < Default
 
   end
 
-  def parse(input, type)
-    unless type == :dir
-      print_error "#{input} type (#{type}) is not 'dir'"
-    end
+  # def parse(input, type)
+  #   unless type == :dir
+  #     print_error "#{input} type (#{type}) is not 'dir'"
+  #   end
+  #
+  # end
 
-    unless NSS.NSS_Init(input) == 0
-      print_debug "Failed at reading #{input}"
+  def parse_file(input)
+
+    super
+    dir = File.dirname input
+
+    unless NSS.NSS_Init(dir) == 0
+      print_debug "Failed at reading #{dir}"
       return
     end
 
@@ -142,34 +285,42 @@ class Firefox < Default
     NSS.PK11_CheckUserPassword(keySlot, "")
     NSS.PK11_Authenticate(keySlot, 1, nil)
 
-    db_path = "#{input}/signons.sqlite"
-    if File.exists? db_path
+    case File.basename(input).downcase
+    when "signons.sqlite"
 
-      print_debug "#{input}/signons.sqlite exists"
-      db = SQLite3::Database.new( db_path )
+      print_debug "Extracting credz from #{input}"
+      db = SQLite3::Database.new( input )
       ff_credz = db.execute("SELECT hostname, encryptedUsername, encryptedPassword FROM moz_logins ORDER BY hostname")
-      ff_credz.each do |hostname, encryptedUsername, encryptedPassword|
-        self.decrypt(db_path, hostname, encryptedUsername, encryptedPassword)
+
+      begin
+        ff_credz.each do |hostname, encryptedUsername, encryptedPassword|
+          self.decrypt(input, hostname, encryptedUsername, encryptedPassword)
+        end
+      rescue
       end
+
       db.close
 
+    when "logins.json"
+
+      print_debug "Extracting credz from #{input}"
+      db = File.open( input )
+      json = JSON.parse( db.read )
+
+      begin
+        json["logins"].sort{|a,b| a["hostname"] <=> b["hostname"]}.each do |login|
+          self.decrypt(input, login["hostname"], login["encryptedUsername"], login["encryptedPassword"])
+        end
+      rescue
+      end
+
     else
-      print_debug "#{input}/signons.sqlite does not exists"
+      print_debug "#{input} called from the void"
       return
     end
 
-    db_path = "#{input}/logins.json"
-    if File.exists? db_path
-
-      print_debug "#{input}/logins.json exists"
-      db = File.open( db_path )
-      json = JSON.parse( db.read )
-
-      json["logins"].sort{|a,b| a["hostname"] <=> b["hostname"]}.each do |login|
-        self.decrypt(db_path, login["hostname"], login["encryptedUsername"], login["encryptedPassword"])
-      end
-
-    end
+    NSS.PK11_FreeSlot(keySlot)
+    NSS.NSS_Shutdown()
 
   end
 
@@ -177,35 +328,31 @@ end
 
 class FileZilla < Default
 
-  @@files = [ "sitemanager.xml", "filezilla.xml" ]
+  def initialize()
 
-  def parse(input, type)
-
-    case type
-
-    when :file
-      parse_file(input)
-    when :dir
-      parse_dir(input)
-    else
-      print_error "Filezilla - #{input} type (#{type}) is not supported"
-    end
-
-  end
-
-  def parse_dir(input)
-
-    @@files.each do |f|
-      parse_file("#{input}/#{f}")
-    end
+    @files = [ "sitemanager.xml", "filezilla.xml" ]
+    @credz = {
+      :block => {
+        "Settings/Setting" => {
+          :host => "FTP Proxy host",
+          :user => "FTP Proxy user",
+          :pass => "FTP Proxy password"
+        },
+        "Settings/Item" => {
+          :host => "Last Server Host",
+          :user => "Last Server User",
+          :pass => "Last Server Pass"
+        },
+      },
+      :item => [ "RecentServers/Server", "Sites/Site" ]
+    }
 
   end
 
   def parse_file(input)
 
-    return unless File.exist?("#{input}")
-
-    case File.basename(input)
+    super
+    case File.basename(input).downcase
 
     when "sitemanager.xml"
       f = File.open( input )
@@ -228,26 +375,45 @@ class FileZilla < Default
       f = File.open( input )
       xml = Nokogiri::XML( f )
 
-      host = xml.xpath("//FileZilla3/Settings/Setting[@name='FTP Proxy host']")[0].text
-      user = xml.xpath("//FileZilla3/Settings/Setting[@name='FTP Proxy user']")[0].text
-      pass = xml.xpath("//FileZilla3/Settings/Setting[@name='FTP Proxy password']")[0].text
-
-      unless ( host.nil? or host.length == 0 ) and
-             ( user.nil? or user.length == 0 ) and
-             ( pass.nil? or pass.length == 0 )
-        print_info "#{host} => #{user} - #{pass}"
+      if xml.xpath("//FileZilla").length > 0
+        version = "FileZilla"
+      elsif xml.xpath("//FileZilla3").length > 0
+        version = "FileZilla3"
+      else
+        f.close
+        return
       end
 
-      host = xml.xpath("//FileZilla3/Settings/Setting[@name='Proxy host']")[0].text
-      port = xml.xpath("//FileZilla3/Settings/Setting[@name='Proxy port']")[0].text
-      user = xml.xpath("//FileZilla3/Settings/Setting[@name='Proxy user']")[0].text
-      pass = xml.xpath("//FileZilla3/Settings/Setting[@name='Proxy password']")[0].text
+      @credz[:block].each_key do |k|
 
-      unless ( host.nil? or host.length == 0 ) and
-             ( port.nil? or port.length == 0 or port == "0" ) and
-             ( user.nil? or user.length == 0 ) and
-             ( pass.nil? or pass.length == 0 )
-        print_info "#{host}:#{port} => #{user} - #{pass}"
+        begin
+          host = xml.xpath("//#{version}/#{k}[@name='#{@credz[:block][k][:host]}']")[0].text
+          user = xml.xpath("//#{version}/#{k}[@name='#{@credz[:block][k][:user]}']")[0].text
+          pass = xml.xpath("//#{version}/#{k}[@name='#{@credz[:block][k][:pass]}']")[0].text
+
+          unless ( host.nil? or host.length == 0 ) and
+              ( user.nil? or user.length == 0 ) and
+              ( pass.nil? or pass.length == 0 )
+            print_info "#{host} => #{user} - #{pass}"
+          end
+
+        rescue
+        end
+
+      end
+
+      @credz[:item].each do |k|
+
+        xml.xpath("//#{version}/#{k}").each do |item|
+
+          host = item.attr("Host")
+          user = item.attr("User")
+          pass = item.attr("Pass")
+
+          print_info "#{host} => #{user} - #{pass}"
+
+        end
+
       end
 
       f.close
@@ -264,9 +430,7 @@ end
 
 if $0 == __FILE__
 
-  options = {
-    :input => [],
-  }
+  options = {}
 
   opts = OptionParser.new
   opts.banner = "Usage: #{$0} -f <format> -t <input-type> -i <input> [options]"
@@ -283,6 +447,8 @@ if $0 == __FILE__
       options[:format] = Credentials::Decrypt::Firefox
     when "filezilla"
       options[:format] = Credentials::Decrypt::FileZilla
+    when "winscp"
+      options[:format] = Credentials::Decrypt::WinSCP
     else
       print_error "Unknown format #{f}"
       puts opts.banner
@@ -291,6 +457,7 @@ if $0 == __FILE__
   end
 
   opts.on("-i", "--input INPUT", "The input would usually be some string(s) of file(s)") do |i|
+    options[:input] = [] if options[:input].nil?
     options[:input] << i
   end
 
@@ -319,10 +486,38 @@ if $0 == __FILE__
 
   opts.parse!
 
-  parser = options[:format].new()
-  options[:input].each do |input|
-    puts "Processing #{input}" if $debug
-    parser.parse(input, options[:type])
+
+  if options[:format]
+    parsers = options[:format]
+  else
+    parsers = [
+               Credentials::Decrypt::UVNC,
+               Credentials::Decrypt::Firefox,
+               Credentials::Decrypt::FileZilla,
+               Credentials::Decrypt::WinSCP
+              ]
   end
+
+  if options[:input]
+    targets = options[:input]
+  else
+    targets = Dir.glob("**/*/")
+  end
+
+  targets.each do |input|
+    puts "Processing #{input}" if $debug
+    parsers.each do |p|
+
+      if options[:type]
+        type = options[:type]
+      else
+        type = File.ftype(input).to_sym
+      end
+
+      parser = p.new
+      parser.parse(input, type)
+    end
+  end
+
 
 end
