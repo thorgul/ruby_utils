@@ -143,6 +143,28 @@ module CPassword
 
 end
 
+class WebSphere
+
+  class Xor
+
+  def self.decipher ( pass )
+
+    res = String.new
+
+    return nil if pass.match(/^\{(xor)\}.*/).nil?
+
+    b64pass = pass.scan(/^\{xor\}(.*)/)[0][0]
+
+    xored = b64pass.base64_decode
+    res = xored ^ "_"
+
+    res
+  end
+
+end
+
+end
+
 # Stolen code from somewhere I forgot
 # Trash it if you are annoying about licensing and stuff
 class VNC
