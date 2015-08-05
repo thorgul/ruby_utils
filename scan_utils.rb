@@ -3,7 +3,7 @@
 require 'nokogiri'
 require 'sqlite3'
 require 'optparse'
-
+require 'zip'
 
 module Gul
 
@@ -27,29 +27,35 @@ class Generic
 
     @db = SQLite3::Database.new( path )
 
-    @db.execute( "CREATE TABLE IF NOT EXISTS host_info (" +
-                 "id INTEGER PRIMARY KEY AUTOINCREMENT,"  +
-                 "ip VARCHAR(15),"                        +
-                 "title TEXT,"                            +
-                 "data TEXT )" )
-    @db.execute( "CREATE TABLE IF NOT EXISTS port_info (" +
-                 "id INTEGER PRIMARY KEY AUTOINCREMENT,"  +
-                 "ip VARCHAR(15),"                        +
-                 "port SMALLINT,"                         +
-                 "service TEXT )" )
-    @db.execute( "CREATE TABLE IF NOT EXISTS service_info (" +
-                 "id INTEGER,"                               +
-                 "source TEXT,"                              +
-                 "title TEXT,"                               +
-                 "data TEXT )" )
-
+    @db.execute( "CREATE TABLE IF NOT EXISTS host_info (      " +
+                 "  id    INTEGER PRIMARY KEY AUTOINCREMENT,  " +
+                 "  ip    VARCHAR(15),                        " +
+                 "  title TEXT,                               " +
+                 "  data  TEXT )                              " )
+    @db.execute( "CREATE TABLE IF NOT EXISTS port_info (      " +
+                 "  id      INTEGER PRIMARY KEY AUTOINCREMENT," +
+                 "  ip      VARCHAR(15),                      " +
+                 "  port    SMALLINT,                         " +
+                 "  service TEXT )                            " )
+    @db.execute( "CREATE TABLE IF NOT EXISTS service_info (   " +
+                 "  id     INTEGER,                           " +
+                 "  source TEXT,                              " +
+                 "  title  TEXT,                              " +
+                 "  data   TEXT )                             " )
   end
 
   def insert_host_values(values=nil)
 
     false if values.nil?
 
-    preped = @db.prepare( "INSERT INTO host_info SELECT NULL, ?, ?, ? WHERE NOT EXISTS(SELECT 1 FROM host_info WHERE ip = ? AND title = ? AND data = ?)" )
+    preped = @db.prepare( "INSERT INTO host_info " +
+                          "SELECT NULL, ?, ?, ?  " +
+                          "WHERE  NOT EXISTS (   " +
+                          "  SELECT 1            " +
+                          "  FROM host_info      " +
+                          "  WHERE ip    = ? AND " +
+                          "        title = ? AND " +
+                          "        data  = ? )   " )
 
     values.each_pair {|k,v| values[k] = v.strip if v.class == String }
     preped.bind_params( values[:ip],
@@ -68,7 +74,14 @@ class Generic
     false if values.nil?
 
     values.each_pair {|k,v| values[k] = v.strip if v.class == String }
-    preped = @db.prepare( "INSERT INTO port_info SELECT NULL, ?, ?, ? WHERE NOT EXISTS(SELECT 1 FROM port_info WHERE ip = ? AND port = ? AND service = ?)" )
+    preped = @db.prepare( "INSERT INTO port_info    " +
+                          "SELECT NULL, ?, ?, ?     " +
+                          "WHERE NOT EXISTS (       " + 
+                          "  SELECT 1               " +
+                          "  FROM port_info         " +
+                          "  WHERE ip      = ?  AND " +
+                          "        port    = ?  AND " +
+                          "        service = ? )"     )
     preped.bind_params( values[:host],
                         values[:port],
                         values[:service],
@@ -85,7 +98,15 @@ class Generic
     false if values.nil?
 
     values.each_pair {|k,v| values[k] = v.strip if v.class == String }
-    preped = @db.prepare( "INSERT INTO service_info SELECT ?, ?, ?, ? WHERE NOT EXISTS(SELECT 1 FROM service_info WHERE id = ? AND source = ? AND title = ? AND data = ?)" )
+    preped = @db.prepare( "INSERT INTO service_info  " +
+                          "SELECT ?, ?, ?, ?         " +
+                          "WHERE NOT EXISTS (        " +
+                          "  SELECT 1                " +
+                          "  FROM service_info       " +
+                          "  WHERE id     = ?    AND " +
+                          "        source = ?    AND " +
+                          "        title  = ?    AND " +
+                          "        data   = ? )      " )
     preped.bind_params( values[:id],
                         values[:source],
                         values[:title],
@@ -104,9 +125,12 @@ class Generic
 
     return nil if values.nil?
 
-    id = @db.get_first_value( "SELECT id FROM port_info WHERE ip = ? AND port = ?",
+    id = @db.get_first_value( "SELECT id            " +
+                              "FROM port_info       " +
+                              "WHERE ip   = ?  AND  " +
+                              "      port = ?",
                              values[:host],
-                             values[:port])
+                             values[:port]            )
 
     return id unless id.nil?
     return id if values[:create] == false
@@ -213,6 +237,7 @@ class Nmap < Generic
                               :source => "nmap",
                               :title  => title,
                               :data   => data )
+
       end
 
     end
@@ -220,6 +245,45 @@ class Nmap < Generic
     @db.execute("END TRANSACTION")
 
   end
+end
+
+class Burp < Generic
+
+  def parse(path)
+    self.burp2sql(path)
+  end
+
+  def burp2sql(path)
+
+    @f = Zip::File.open(path)
+
+    @f.each do |entry|
+
+      xml = entry.get_input_stream.read
+
+      xml.scan(/<issue>.*?<host>(.*?)<\/host>.*?<port>(.*?)<\/port>.*?<(http.?)>.*?<id>(.*?)<\/id>.*?<\/issue>/m).each do |m|
+
+        s_host    = m[0][5..-1]
+        s_port    = m[1].unpack('H*')[0].to_i(16)
+        s_service = m[2]
+        s_data    = m[3][5..-1].gsub(/<\/?.*?>/m, "")
+
+        id = get_service_id(:host    => s_host,
+                            :port    => s_port,
+                            :service => s_service,
+                            :create  => true)
+
+        insert_service_values(:id     => id,
+                              :source => "burp",
+                              :title  => "issue",
+                              :data   => s_data )
+
+      end
+
+    end
+
+  end
+
 end
 
 
@@ -495,6 +559,8 @@ if $0 == __FILE__
       options[:type] = Gul::Scan::Ettercap
     elsif t.downcase == "p0f"
       options[:type] = Gul::Scan::P0f
+    elsif t.downcase == "burp"
+      options[:type] = Gul::Scan::Burp
     elsif t.downcase == "sslscan"
       options[:type] = Gul::Scan::SslScan
     end
