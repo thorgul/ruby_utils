@@ -266,7 +266,7 @@ class Burp < Generic
         s_host    = m[0][5..-1]
         s_port    = m[1].unpack('H*')[0].to_i(16)
         s_service = m[2]
-        s_data    = m[3][5..-1].gsub(/<\/?.*?>/m, "")
+        s_data    = m[3][5..-1].gsub(/<br>/, "\n").gsub(/<\/?.*?>/m, "")
 
         id = get_service_id(:host    => s_host,
                             :port    => s_port,
