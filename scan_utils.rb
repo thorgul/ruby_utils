@@ -261,21 +261,22 @@ class Burp < Generic
 
       xml = entry.get_input_stream.read
 
-      xml.scan(/<issue>.*?<host>(.*?)<\/host>.*?<port>(.*?)<\/port>.*?<(http.?)>.*?<id>(.*?)<\/id>.*?<\/issue>/m).each do |m|
+      xml.scan(/<issue>.*?<type>(.*?)<\/type>.*?<host>(.*?)<\/host>.*?<port>(.*?)<\/port>.*?<(http.?)>.*?<id>(.*?)<\/id>.*?<\/issue>/m).each do |m|
 
-        s_host    = m[0][5..-1]
-        s_port    = m[1].unpack('H*')[0].to_i(16)
-        s_service = m[2]
-        s_data    = m[3][5..-1].gsub(/<br>/, "\n").gsub(/<\/?.*?>/m, "")
+        s_type    = m[0][1..-1].unpack('H*')
+        s_host    = m[1][5..-1]
+        s_port    = m[2].unpack('H*')[0].to_i(16)
+        s_service = m[3]
+        s_data    = m[4][5..-1].gsub(/<(ul|li|br)>/, "\n").gsub(/<\/?.*?>/m, "")
 
-        id = get_service_id(:host    => s_host,
-                            :port    => s_port,
-                            :service => s_service,
-                            :create  => true)
+        id = get_service_id(:host     => s_host,
+                            :port     => s_port,
+                            :service  => s_service,
+                            :create   => true)
 
         insert_service_values(:id     => id,
                               :source => "burp",
-                              :title  => "issue",
+                              :title  => s_type,
                               :data   => s_data )
 
       end
@@ -550,17 +551,17 @@ if $0 == __FILE__
     options[:output] = o
   end
 
-  opts.on("-t", "--type TYPE", "The xml files type (nikto|nmap|ettercap|p0f|sslscan)") do |t|
-    if    t.downcase == "nmap"
+  opts.on("-t", "--type TYPE", "The xml files type (burp|ettercap|nikto|nmap|p0f|sslscan)") do |t|
+    if t.downcase == "burp"
+      options[:type] = Gul::Scan::Burp
+    elsif t.downcase == "ettercap"
+      options[:type] = Gul::Scan::Ettercap
+    elsif    t.downcase == "nmap"
       options[:type] = Gul::Scan::Nmap
     elsif t.downcase == "nikto"
       options[:type] = Gul::Scan::Nikto
-    elsif t.downcase == "ettercap"
-      options[:type] = Gul::Scan::Ettercap
     elsif t.downcase == "p0f"
       options[:type] = Gul::Scan::P0f
-    elsif t.downcase == "burp"
-      options[:type] = Gul::Scan::Burp
     elsif t.downcase == "sslscan"
       options[:type] = Gul::Scan::SslScan
     end
