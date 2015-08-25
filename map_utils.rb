@@ -2,9 +2,15 @@
 
 require 'sqlite3'
 require 'optparse'
-require 'net/smb'
 require 'digest'
 require 'debug_utils'
+
+begin
+  require 'net/smb'
+rescue LoadError => e
+  print_error e.to_s
+  print_error "SMB mapping functions won't work without net/smb !"
+end
 
 # $debug = true
 
@@ -65,7 +71,13 @@ class Generic
                                             "FROM port_info "                       +
                                             "LEFT JOIN service_info "               +
                                             "ON port_info.id=service_info.id "      +
-                                            "WHERE title LIKE '%netbios-share%'" )
+                                            "WHERE title LIKE '%netbios-share%'" ),
+      :get_target_smb_shares => @db.prepare( "SELECT DISTINCT port_info.id,ip,data " +
+                                             "FROM port_info "                       +
+                                             "LEFT JOIN service_info "               +
+                                             "ON port_info.id=service_info.id "      +
+                                             "WHERE title LIKE '%netbios-share%' AND " +
+                                             "port_info.ip = ?")
     }
     @db.execute("PRAGMA synchronous   = OFF")
     @db.execute("PRAGMA journal_mode  = MEMORY")
@@ -212,7 +224,8 @@ class Smb < Generic
       targets = @prep[:get_smb_services].execute!
     else
       targets = opts[:targets].map do |ip|
-        id = get_service_id(:host => ip, :port => 445, :create => false)
+        # id = get_service_id(:host => ip, :port => 445, :create => false)
+        id = get_service_id(:host => ip, :port => 445, :create => true)
         (id.nil? && nil) || [ id, ip ]
       end
     end
@@ -251,7 +264,8 @@ class Smb < Generic
             unless s.downcase == "admin$" or
                 s.downcase == "ipc$" or
                 s.downcase == "print$"
-              print_info "Share found: - #{id} - #{ip}/#{s}"
+              # print_info "Share found: - #{id} - #{ip}/#{s}"
+              print_info "Share found: - #{ip}/#{s}"
               insert_service_values({
                                       :id     => id,
                                       :source => "netbios-map",
@@ -276,12 +290,17 @@ class Smb < Generic
     if opts[:targets].nil?
       targets = @prep[:get_smb_shares].execute!
     else
-      targets = opts[:targets].map do |t|
-        s = t.split("/")
-        ip = s[0]
-        share = s[1..-1].join("/")
-        id = get_service_id(:host => ip, :port => 445, :create => false)
-        (id.nil? && nil) || [ id, ip, share ]
+      targets = []
+      opts[:targets].each do |t|
+        if t.include? "/"
+          s = t.split("/")
+          ip = s[0]
+          share = s[1..-1].join("/")
+          id = get_service_id(:host => ip, :port => 445, :create => false)
+          targets << (id.nil? && nil) || [ id, ip, share ]
+        else
+          targets += @prep[:get_target_smb_shares].execute!(t)
+        end
       end
     end
 
@@ -713,6 +732,7 @@ if $0 == __FILE__
   if options[:actions].length == 0
     options[:actions] << Gul::Map::Screenshot
     options[:actions] << Gul::Map::Smb
+    print_warn "no action defined. Setting SMB scan and screenshot actions"
   end
 
   if options[:actions].include? Gul::Map::Smb and not options[:credzonly] == true
