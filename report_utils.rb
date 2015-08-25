@@ -247,7 +247,7 @@ function hideshow(id){
                                         "ORDER BY data, ip, port", "HTTP Proxies")
 
       # Report for each server
-      ips = db.execute( "select distinct ip from port_info" )
+      ips = db.execute( "SELECT DISTINCT ip FROM port_info" )
       ips.sort_by! {|ip| ip[0].to_s.split('.').map{ |octet| octet.to_i} }
       ips.each do |ip|
 
