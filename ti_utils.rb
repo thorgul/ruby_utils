@@ -3,6 +3,7 @@
 require 'debug_utils'
 require 'metasm'
 require 'uri'
+require 'json'
 
 if RUBY_VERSION >= "1.9.0"
   ZEROBYTE = "\x00".force_encoding(Encoding::BINARY)  unless defined? ZEROBYTE
@@ -74,6 +75,14 @@ class String
     res == nil ? false : true
   end
 
+  def json?()
+    begin
+      JSON.parse(self)
+      return true
+    rescue Exception => e
+      return false
+    end
+  end
 
   def mac2ipv6()
 
