@@ -458,7 +458,11 @@ if $0 == __FILE__
 
   opts.on("-i", "--input INPUT", "The input would usually be some string(s) of file(s)") do |i|
     options[:input] = [] if options[:input].nil?
-    options[:input] << i
+    if File.directory? i
+      options[:input] += Dir.glob("./#{i}/**/")
+    else
+      options[:input] << i
+    end
   end
 
   opts.on("-t", "--type TYPE", "Specify if input will be string(s) or file(s)") do |t|
@@ -501,7 +505,7 @@ if $0 == __FILE__
   if options[:input]
     targets = options[:input]
   else
-    targets = Dir.glob("**/*/")
+    targets = Dir.glob("**/") + Dir.glob(".[a-zA-Z0-9]*/**/")
   end
 
   targets.each do |input|
