@@ -2,23 +2,29 @@
 
 require 'crypto_utils'
 
+# Todo
+# Implement Jenkins password decryption
+# https://github.com/tweksteen/jenkins-decrypt/blob/master/decrypt.py
+
 module Password
 
 module Cisco
 
 module Password7
 
-@@xlat=[
-	0x64, 0x73, 0x66, 0x64, 0x3b, 0x6b, 0x66, 0x6f,
-	0x41, 0x2c, 0x2e, 0x69, 0x79, 0x65, 0x77, 0x72,
-	0x6b, 0x6c, 0x64, 0x4a, 0x4b, 0x44, 0x48, 0x53,
-	0x55, 0x42, 0x73, 0x67, 0x76, 0x63, 0x61, 0x36,
-	0x39, 0x38, 0x33, 0x34, 0x6e, 0x63, 0x78, 0x76,
-	0x39, 0x38, 0x37, 0x33, 0x32, 0x35, 0x34, 0x6b,
-	0x3b, 0x66, 0x67, 0x38, 0x37
-]
+  module_function
 
-  def self.encrypt(password)
+  @@xlat=[
+    0x64, 0x73, 0x66, 0x64, 0x3b, 0x6b, 0x66, 0x6f,
+    0x41, 0x2c, 0x2e, 0x69, 0x79, 0x65, 0x77, 0x72,
+    0x6b, 0x6c, 0x64, 0x4a, 0x4b, 0x44, 0x48, 0x53,
+    0x55, 0x42, 0x73, 0x67, 0x76, 0x63, 0x61, 0x36,
+    0x39, 0x38, 0x33, 0x34, 0x6e, 0x63, 0x78, 0x76,
+    0x39, 0x38, 0x37, 0x33, 0x32, 0x35, 0x34, 0x6b,
+    0x3b, 0x66, 0x67, 0x38, 0x37
+  ]
+
+  def encrypt(password)
     seed=rand(16)
     password=password[0, 11]
 
@@ -27,7 +33,7 @@ module Password7
     return format("%02d", seed) + hash.collect { |e| format("%02x", e) }.join("")
   end
 
-  def self.decrypt(hash)
+  def decrypt(hash)
     seed=hash[0, 2].to_i
     hash=hash[2, hash.length-1]
     pairs=(0 .. (hash.length/2-1)).collect { |i| hash[i*2, 2].to_i(16) }
@@ -40,7 +46,9 @@ end
 
 module WLC
 
-  def self.decrypt(iv, hash)
+  module_function
+
+  def decrypt(iv, hash)
 
     hash.gsub!(/0*$/, "")
 
@@ -56,8 +64,10 @@ end
 
 module ACS
 
+  module_function
+
   # ripped from nico's script http://www.openwall.com/lists/john-users/2014/12/08/1
-  def self.decrypt(enc)
+  def decrypt(enc)
 
     des = OpenSSL::Cipher::Cipher.new('DES-EDE3-CBC')
     des.decrypt
@@ -80,30 +90,32 @@ end
 
 module Citrix
 
-# Doc is there => https://intrepidusgroup.com/insight/2014/01/good-fun-with-bad-crypto/
-module Ctx1
+  # Doc is there => https://intrepidusgroup.com/insight/2014/01/good-fun-with-bad-crypto/
+  module Ctx1
 
-  def self.decrypt_letter(block, v = 0)
-    f = (block[2].ord - 1) & 0x0f
-    s = (block[3].ord - 1) & 0x0f
-    ((f*16+s) ^ v).chr
-  end
+    module_function
 
-  def self.decrypt(password)
-
-    clear = ""
-    v = 0
-
-    password.scan(/..../).each do |block|
-      c = Citrix::Ctx1.decrypt_letter(block, v)
-      v = v ^ c.ord
-      clear << c
+    def decrypt_letter(block, v = 0)
+      f = (block[2].ord - 1) & 0x0f
+      s = (block[3].ord - 1) & 0x0f
+      ((f*16+s) ^ v).chr
     end
-    clear
+
+    def decrypt(password)
+
+      clear = ""
+      v = 0
+
+      password.scan(/..../).each do |block|
+        c = Citrix::Ctx1.decrypt_letter(block, v)
+        v = v ^ c.ord
+        clear << c
+      end
+      clear
+
+    end
 
   end
-
-end
 
 end
 
@@ -114,7 +126,9 @@ module CPassword
          "\xf4\x96\xe8\x06\xcc\x05\x79\x90" +
          "\x20\x9b\x09\xa4\x33\xb6\x6c\x1b"
 
-  def self.decrypt(hash)
+  module_function
+
+  def decrypt(hash)
     res = nil
 
     3.times do |pad|
@@ -132,7 +146,7 @@ module CPassword
     res
   end
 
-  def self.encrypt(password)
+  def encrypt(password)
     aes = OpenSSL::Cipher::Cipher.new("AES-256-CBC")
     aes.encrypt
     aes.key = @@key
@@ -143,27 +157,202 @@ module CPassword
 
 end
 
-class WebSphere
+module NTSSP
 
-  class Xor
+  module_function
+  
+  def decode(pass, base64 = true)
 
-  def self.decipher ( pass )
+    pass = pass.base64_decode if base64 == true
+    pass = pass.force_encoding(Encoding::BINARY)
 
-    res = String.new
+    lmHashLen    = pass[12..13].unpack('S<')[0].to_i
+    lmHashOffset = pass[16..17].unpack('S<')[0].to_i
+    puts "lmHashLen:    %s" % lmHashLen                if $debug
+    puts "lmHashOffset: %s" % lmHashOffset             if $debug
+    lmHash       = pass[lmHashOffset..lmHashOffset+lmHashLen-1].unpack('H*')[0].upcase
+    puts "lmHash;       %s" % lmHash                   if $debug
+    ntHashLen    = pass[20..21].unpack('S<')[0].to_i
+    ntHashOffset = pass[24..25].unpack('S<')[0].to_i
+    puts "ntHashLen;    %s" % ntHashLen                if $debug
+    puts "ntHashOffset: %s" % ntHashOffset             if $debug
+    ntHash       = pass[ntHashOffset..ntHashOffset+ntHashLen-1].unpack('H*')[0].upcase
+    puts "ntHash:       %s" % ntHash                   if $debug
+    userLen      = pass[36..37].unpack('S<')[0].to_i
+    userOffset   = pass[40..41].unpack('S<')[0].to_i
+    puts "userLen:      %s" % userLen                  if $debug
+    puts "userOffset:   %s" % userOffset               if $debug
+    user         = pass[userOffset..userOffset+userLen-1].gsub("\x00",'')
+    puts "user:         %s" % user                     if $debug
+    # print User
+    # print NthashLen
+    ntHashLen      = 64
+    domainLen      = pass[28..29].unpack('S<')[0]
+    domainOffset   = pass[32..33].unpack('S<')[0]
+    domain         = pass[domainOffset..domainOffset+domainLen-1].gsub("\x00",'')
+    hostNameLen    = pass[44..45].unpack('S<')[0]
+    hostNameOffset = pass[48..49].unpack('S<')[0]
+    hostName       = pass[hostNameOffset..hostNameOffset+hostNameLen-1].gsub("\x00",'')
+    res = '%s::%s::%s:%s' % [user, domain, ntHash[0..31], ntHash[32..-1]]
+  end
+  
+end
 
-    return nil if pass.match(/^\{(xor)\}.*/).nil?
+module WebSphere
 
-    b64pass = pass.scan(/^\{xor\}(.*)/)[0][0]
+  module Xor
 
-    xored = b64pass.base64_decode
-    res = xored ^ "_"
+    module_function
 
-    res
+    def decipher ( pass )
+
+      res = String.new
+
+      return nil if pass.match(/^\{(xor)\}.*/).nil?
+
+      b64pass = pass.scan(/^\{xor\}(.*)/)[0][0]
+
+      xored = b64pass.base64_decode
+      res = xored ^ "_"
+
+      res
+    end
+
   end
 
 end
 
-end
+
+module WebLogic
+
+  module Aes
+
+    # Thanks to that dude that finiehed my old abandonned research
+    # https://blog.netspi.com/decrypting-weblogic-passwords/
+    @@hardcoded_key = "ccb97558940b82637c8bec3c770f86fa3a391a56".unhex()
+    
+    module_function
+
+    # pass={AES}.....
+    def decipher ( pass, key )
+
+      puts     "key [0x#{key.length.to_s(16)}]     => #{key.to_hex}"
+
+
+      pass      = pass[5..-1]        if pass.start_with? "{AES}"
+      enc_pass  = pass.base64_decode
+      puts     "enc_pass [0x#{enc_pass.length.to_s(16)}] => #{enc_pass.to_hex}"
+      
+      #all call the password => @@key
+
+      index = 0
+
+      nb          = key[index].to_hex.to_i(16)
+      index       += 1
+                  
+      salt        = key[index..index + nb - 1]
+      index       += nb
+      puts        "nb              => 0x#{nb.to_s(16)}"                          if $debug
+      puts        "index           => 0x#{index.to_s(16)}"                       if $debug
+      puts        "salt [0x#{salt.length.to_s(16)}]      => #{salt.to_hex}"      if $debug
+                  
+      enc_type    = key[index].to_hex.to_i(16)
+      index       += 1
+      puts        "nb              => 0x#{nb.to_s(16)}"                          if $debug
+      puts        "index           => 0x#{index.to_s(16)}"                       if $debug
+      puts        "enc_type        => #{enc_type}"                               if $debug
+                  
+      nb          = key[index].to_hex.to_i(16)
+      index       += 1
+
+      enc_key     = key[index..index + nb - 1]
+      index +=    nb
+      puts        " -=[ 3DES ]=-"
+      puts        "nb              => 0x#{nb.to_s(16)}"                          if $debug
+      puts        "index           => 0x#{index.to_s(16)}"                       if $debug
+      puts        "enc_key [0x#{enc_key.length.to_s(16)}]  => #{enc_key.to_hex}" if $debug
+
+      if enc_type >= 2
+        nb        = key[index].to_hex.to_i(16)
+        index       += 1
+
+        enc_key   = key[index..index + nb - 1]
+        puts      " -=[ AES ]=-"
+        puts      "nb              => 0x#{nb.to_s(16)}"                          if $debug
+        puts      "index           => 0x#{index.to_s(16)} -> 0x#{(index + nb).to_s(16)}"  if $debug
+        puts      "enc_key [0x#{enc_key.length.to_s(16)}]  => #{enc_key.to_hex}" if $debug
+      end
+
+      ### # On va tester ca...
+      ### # rc2-cbc
+      ### # sinon tester ca :
+      ### # aes-128-cbc-hmac-sha1
+      ### aes = OpenSSL::Cipher::Cipher.new('rc2-cbc')
+      ### 
+      ### 
+      ### aes.decrypt
+      ### aes.key = @@key
+      ### aes.iv  = salt
+
+      secret_key = OpenSSL::PKCS5.pbkdf2_hmac_sha1(@@hardcoded_key,
+                                                   salt,
+                                                   5, # Thx Eric Gruber !
+                                                   @@hardcoded_key.length)
+      puts "sec key [0x#{secret_key.length.to_s(16)}]  => #{secret_key.to_hex}"
+
+      cipher = OpenSSL::Cipher.new('AES-128-CBC')
+      cipher.decrypt
+      cipher.key = secret_key
+      cipher.iv  = enc_pass[0..15]
+      # cipher.padding = 0
+
+      res = cipher.update(enc_pass[16..-1]) + cipher.final
+      # res.to_hex
+
+      ###  SecretKeyFactory keyFactory = SecretKeyFactory.getInstance("PBEWITHSHAAND128BITRC2-CBC");
+      ### 
+      ###  PBEKeySpec pbeKeySpec = new PBEKeySpec(password, salt, 5);
+      ### 
+      ###  SecretKey secretKey = keyFactory.generateSecret(pbeKeySpec);
+      ### 
+      ###  PBEParameterSpec pbeParameterSpec = new PBEParameterSpec(salt, 0);
+      ### 
+      ###  Cipher cipher = Cipher.getInstance("PBEWITHSHAAND128BITRC2-CBC");
+      ###  cipher.init(Cipher.DECRYPT_MODE, secretKey, pbeParameterSpec);
+      ###  SecretKeySpec secretKeySpec = new SecretKeySpec(cipher.doFinal(encryptionKey), "AES");
+      ### 
+      ###  byte[] iv = new byte[16];
+      ###  System.arraycopy(encryptedPassword1, 0, iv, 0, 16);
+      ###  int encryptedPasswordlength = encryptedPassword1.length - 16 ;
+      ###  byte[] encryptedPassword2 = new byte[encryptedPasswordlength];
+      ###  System.arraycopy(encryptedPassword1, 16, encryptedPassword2, 0, encryptedPasswordlength);
+      ###  IvParameterSpec ivParameterSpec = new IvParameterSpec(iv);
+      ###  Cipher outCipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+      ###  outCipher.init(Cipher.DECRYPT_MODE, secretKeySpec, ivParameterSpec);
+      ### 
+      ###  byte[] cleartext = outCipher.doFinal(encryptedPassword2);
+      ### 
+      ###  return new String(cleartext, "UTF-8");
+      ###  }
+
+      
+      
+      
+    end
+
+  end  # WebLogic:Aes
+
+  module Des # Actually 3Des...
+
+    module_function
+    def decipher ( pass, key )
+
+    end
+
+  end # WebLogic:Des
+
+end # WebLogic
+
 
 # Stolen code from somewhere I forgot
 # Trash it if you are annoying about licensing and stuff
