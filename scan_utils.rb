@@ -4,6 +4,7 @@ require 'nokogiri'
 require 'sqlite3'
 require 'optparse'
 require 'zip'
+require 'csv'
 
 module Gul
 
@@ -23,25 +24,36 @@ module Scan
 class Generic
 
   # File.basename(xmlpath, File.extname(xmlpath)) + ".sqlite"
-  def initialize(path)
+  def initialize(path, opts)
 
     @db = SQLite3::Database.new( path )
 
-    @db.execute( "CREATE TABLE IF NOT EXISTS host_info (      " +
-                 "  id    INTEGER PRIMARY KEY AUTOINCREMENT,  " +
-                 "  ip    VARCHAR(15),                        " +
-                 "  title TEXT,                               " +
-                 "  data  TEXT )                              " )
-    @db.execute( "CREATE TABLE IF NOT EXISTS port_info (      " +
-                 "  id      INTEGER PRIMARY KEY AUTOINCREMENT," +
-                 "  ip      VARCHAR(15),                      " +
-                 "  port    SMALLINT,                         " +
-                 "  service TEXT )                            " )
-    @db.execute( "CREATE TABLE IF NOT EXISTS service_info (   " +
-                 "  id     INTEGER,                           " +
-                 "  source TEXT,                              " +
-                 "  title  TEXT,                              " +
-                 "  data   TEXT )                             " )
+    @db.execute( "CREATE TABLE IF NOT EXISTS host_info (              " +
+                 "  id         INTEGER PRIMARY KEY AUTOINCREMENT,     " +
+                 "  ip         VARCHAR(15),                           " +
+                 "  title      TEXT,                                  " +
+                 "  data       TEXT )                                 " )
+
+    @db.execute( "CREATE TABLE IF NOT EXISTS port_info (              " +
+                 "  id         INTEGER PRIMARY KEY AUTOINCREMENT,     " +
+                 "  ip         VARCHAR(15),                           " +
+                 "  port       SMALLINT,                              " +
+                 "  service    TEXT )                                 " )
+
+    @db.execute( "CREATE TABLE IF NOT EXISTS service_info (           " +
+                 "  id         INTEGER,                               " +
+                 "  source     TEXT,                                  " +
+                 "  title      TEXT,                                  " +
+                 "  data       TEXT )                                 " )
+
+    @db.execute( "CREATE TABLE IF NOT EXISTS vuln_info (          " +
+                 "  id         INTEGER,                           " +
+                 "  source     TEXT,                              " +
+                 "  name       TEXT,                              " +
+                 "  risk       TEXT,                              " +
+                 "  detail     TEXT,                              " +
+                 "  solution   TEXT)                              " )
+
   end
 
   def insert_host_values(values=nil)
@@ -76,7 +88,7 @@ class Generic
     values.each_pair {|k,v| values[k] = v.strip if v.class == String }
     preped = @db.prepare( "INSERT INTO port_info    " +
                           "SELECT NULL, ?, ?, ?     " +
-                          "WHERE NOT EXISTS (       " + 
+                          "WHERE NOT EXISTS (       " +
                           "  SELECT 1               " +
                           "  FROM port_info         " +
                           "  WHERE ip      = ?  AND " +
@@ -120,6 +132,38 @@ class Generic
     true
   end
 
+  def insert_vuln_values(values=nil)
+
+    false if values.nil?
+
+    values.each_pair {|k,v| values[k] = v.strip if v.class == String }
+    preped = @db.prepare( "INSERT INTO vuln_info     " +
+                          "SELECT ?, ?, ?, ?, ?, ?   " +
+                          "WHERE NOT EXISTS (        " +
+                          "  SELECT 1                " +
+                          "  FROM vuln_info         " +
+                          "  WHERE id       = ? AND " +
+                          "        source   = ? AND " +
+                          "        name     = ? AND " +
+                          "        risk     = ? AND " +
+                          "        detail   = ? AND " +
+                          "        solution = ? )   " )
+    preped.bind_params( values[:id],
+                        values[:source],
+                        values[:name],
+                        values[:risk],
+                        values[:detail],
+                        values[:solution],
+                        values[:id],
+                        values[:source],
+                        values[:name],
+                        values[:risk],
+                        values[:detail],
+                        values[:solution] )
+    preped.execute!
+    preped.close
+    true
+  end
 
   def get_service_id(values=nil)
 
@@ -164,8 +208,8 @@ class Generic
   end
 
   def close()
-    @db.close
-    @f.close
+    @db.close if @db
+    @f.close  if @f
   end
 
 end
@@ -249,6 +293,12 @@ end
 
 class Burp < Generic
 
+  def initialize(path, opts)
+    super(path, opts)
+
+    @burp_jar = Zip::File.open(opts[:burp_jar])
+  end
+
   def parse(path)
     self.burp2sql(path)
   end
@@ -274,11 +324,27 @@ class Burp < Generic
                             :service  => s_service,
                             :create   => true)
 
-        insert_service_values(:id     => id,
-                              :source => "burp",
-                              :title  => s_type,
-                              :data   => s_data )
+        kb = burp.entries.select{|x| x if x.name.start_with? "resources/KnowledgeBase/Issues/#{s_type}" }[0].get_input_stream.read
 
+        burp_name        = nil
+        burp_description = nil
+        burp_remediation = nil
+        burp_reference   = nil
+
+        begin
+          burp_name = kb.match(/Issue name<\/h1>(.*?)<h1>/mi)[1].strip
+          burp_description = kb.match(/Issue description<\/h1>(.*?)<h1>/mi)[1].strip.gsub("<p>", "").gsub("</p>", "")
+          burp_remediation = kb.match(/Issue remediation<\/h1>(.*?)<h1>/mi)[1].strip.gsub("<p>", "").gsub("</p>", "")
+          burp_reference = kb.match(/References<\/h1>(.*?)<h1>/mi)[1].strip.gsub("<p>", "").gsub("</p>", "")
+        rescue
+        end
+
+        insert_vuln_values(:id        => id,
+                           :source    => "burp",
+                           :name      => burp_name,
+                           :risk      => "",
+                           :detail    => burp_description,
+                           :solution  => burp_remediation)
       end
 
     end
@@ -287,6 +353,58 @@ class Burp < Generic
 
 end
 
+class Nessus < Generic
+
+  def parse(path)
+    self.csv2sql(path)
+  end
+
+  def csv2sql(csvpath)
+
+    unless File.exists?(csvpath)
+      puts "#{csvpath} does not exists"
+      return
+    end
+
+    CSV.foreach(csvpath) do |line|
+      next if line[0] == "Plugin ID" and
+        line[1]  == "CVE"            and
+        line[2]  == "CVSS"           and
+        line[3]  == "Risk"           and
+        line[4]  == "Host"           and
+        line[5]  == "Protocol"       and
+        line[6]  == "Port"           and
+        line[7]  == "Name"           and
+        line[8]  == "Synopsis"       and
+        line[9]  == "Description"    and
+        line[10] == "Solution"       and
+        line[11] == "See Also"       and
+        line[12] == "Plugin Output"
+
+      s_host        = line[4]
+      s_port        = line[6]
+      s_service     = line[5]
+      s_name        = line[7]
+      s_risk        = line[3]
+      s_description = line[9]
+      s_solution    = line[10]
+
+      id = get_service_id(:host     => s_host,
+                          :port     => s_port,
+                          :service  => s_service,
+                          :create   => true)
+
+      insert_vuln_values(:id        => id,
+                         :source    => "nessus",
+                         :name      => s_name,
+                         :risk      => s_risk,
+                         :detail    => s_description,
+                         :solution  => s_solution)
+    end
+
+  end
+
+end
 
 class Nikto < Generic
 
@@ -326,7 +444,6 @@ class Nikto < Generic
   end
 
 end
-
 
 class Ettercap < Generic
 
@@ -521,14 +638,6 @@ class SslScan < Generic
         end
       end
 
-      #
-      #
-      #
-      #
-      #
-      #
-      #
-
     end
 
     @db.execute("END TRANSACTION")
@@ -556,10 +665,12 @@ if $0 == __FILE__
       options[:type] = Gul::Scan::Burp
     elsif t.downcase == "ettercap"
       options[:type] = Gul::Scan::Ettercap
-    elsif    t.downcase == "nmap"
-      options[:type] = Gul::Scan::Nmap
+    elsif t.downcase == "nessus"
+      options[:type] = Gul::Scan::Nessus
     elsif t.downcase == "nikto"
       options[:type] = Gul::Scan::Nikto
+    elsif    t.downcase == "nmap"
+      options[:type] = Gul::Scan::Nmap
     elsif t.downcase == "p0f"
       options[:type] = Gul::Scan::P0f
     elsif t.downcase == "sslscan"
@@ -579,7 +690,7 @@ if $0 == __FILE__
     exit
   end
 
-  parser = options[:type].new(options[:output])
+  parser = options[:type].new(options[:output], options[:more_opts])
 
   ARGV.each do |xmlfile|
     puts "Processing #{xmlfile}"
